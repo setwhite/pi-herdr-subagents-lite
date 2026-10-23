@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "pi": {
     "extensions": [
       "./src/index.ts"
     ]
   },
   "scripts": {
+    "lint": "biome check --error-on-warnings .",
+    "check:imports": "node scripts/check-imports.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm lint && pnpm test"
+    "check": "pnpm lint && pnpm check:imports && pnpm typecheck && pnpm test"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
