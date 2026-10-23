@@ -13,7 +13,7 @@ M0 是一个最小 package，package 根就是仓库工作目录：代码在 `sr
 | extension | pi 工具、生命周期、消息信封、错误渲染 | createExtension(deps) | subagent；herdr/session 端口（type-only）；pi 类型 | [extension](../src/extension/README.md) |
 | subagent | run 生命周期、并发、命名、轮询、结果内容/截断 | SubagentService、RunStarted、ToolError、SubagentResult | herdr 端口、session 读取、Node fs | [subagent](../src/subagent/README.md) |
 | herdr | HerdrHost 端口 + CLI 适配 | HerdrHost | Node child_process | [herdr](../src/herdr/README.md) |
-| session | 读 child session 的最后一条 assistant 文本 | readLastAssistantText(path) | Node fs | [session](../src/session/README.md) |
+| session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | readLastAssistant(path) | Node fs | [session](../src/session/README.md) |
 
 入口不是第五个模块：只构造真实 host/session 并导出扩展。
 

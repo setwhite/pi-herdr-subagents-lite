@@ -122,7 +122,7 @@ HerdrHost 是唯一宿主端口：
 | getAgent | name | status + completionSeq，或 null |
 | closeTabIfOnlyPane | tabId、paneId | closed 或 kept；失败按 kept |
 
-SessionReader 读 child session，返回最后一条 assistant 的 text；没有文本或文件不可读返回 null，坏行跳过。
+SessionReader 读 child session，返回最后一条 assistant 的 `{ text, pendingToolCall }`；pendingToolCall 表示最后一条 assistant 消息仍带 toolCall（等反问或下一轮），没有文本或文件不可读时 text 为 null，坏行跳过。
 
 RunStarted 是 `{state:"running", name, paneId, sessionFile}`；ToolError 是 `code + message`；SubagentResult 是 `{state:"done"|"unknown", name, text?, reason?, sessionFile, paneId}`。
 
@@ -133,8 +133,8 @@ RunStarted 是 `{state:"running", name, paneId, sessionFile}`；ToolError 是 `c
 | 状态 | 触发 | 动作 |
 |---|---|---|
 | launching | run | 检查 herdr/并发；预留槽；分配 name；写 brief；createTab；startAgent |
-| running | 轮询 | 每 1000ms getAgent；completionSeq > 0 且 status 为 idle 或 done → completed；null → unknown；连续 3 次错误 → unknown；working/blocked/unknown 继续等 |
-| completed | 完成 | 读 child session，最多 3 次、间隔 200ms；有文本 → done + 尝试关 tab；无文本 → unknown |
+| running | 轮询 | 每 1000ms getAgent；completionSeq > 0 且 status 为 idle 或 done 且最后一条 assistant 不带 toolCall → completed；仍带 toolCall → 继续等反问/下一轮；null → unknown；连续 3 次错误 → unknown；working/blocked/unknown 继续等 |
+| completed | 完成 | 读 child session，最多 3 次、间隔 200ms；有文本 → done + 尝试关 tab；无文本且不带 toolCall → unknown；仍带 toolCall → 回 running 继续轮询 |
 | unknown | 消失/轮询失败/读不到 | 投递 unknown；保留 tab |
 | terminal | 投递或启动失败 | 清轮询器；释放槽；从 active 移除 |
 
@@ -178,10 +178,10 @@ M0 没有配置文件。常量：maxConcurrent 4、pollIntervalMs 1000、readRet
 | seam | 类型 | 覆盖 | 不覆盖 |
 |---|---|---|---|
 | pi 扩展 API + 注入 HerdrHost | 唯一 mock seam | 工具契约、run 生命周期、并发、结果消息、临时 session JSONL | 真实 herdr CLI、真实 pi 进程 |
-| SessionReader | 纯函数表驱动 | 最后一条 assistant、坏行、空结果、文件不存在 | 重试与文件生命周期 |
+| SessionReader | 纯函数表驱动 | 最后一条 assistant、toolCall、坏行、空结果、文件不存在 | 重试与文件生命周期 |
 | 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/close、真实 child | CI 自动化 |
 
-自动化覆盖：schema 与 not_in_herdr；run/并发/命名；完成、去重、completionSeq 0、串行轮询；启动失败与 name_taken；unknown、轮询失败、结果读取失败、shutdown；截断、关 tab kept/抛错；SessionReader 表驱动。具体 AC 见 `docs/todos/` 的 T01–T08。
+自动化覆盖：schema 与 not_in_herdr；run/并发/命名；完成、去重、completionSeq 0、串行轮询、带 toolCall 的等待；启动失败与 name_taken；unknown、轮询失败、结果读取失败、shutdown；截断、关 tab kept/抛错；SessionReader 表驱动。具体 AC 见 `docs/todos/` 的 T01–T08。
 
 手工 E2E：隔离的 `PI_CODING_AGENT_DIR`（复制 auth，不打印、不提交，测后删除；最小 settings，不加载旧包）+ 命名 herdr session；`pnpm build` 后用 `pi -e` 加载 dist；跑正常只读任务并确认 tab、结果、关 tab；验证第 5 个并发、杀掉子进程的 unknown、父 /new 不认领、子 pane 反问不转发；最后删除测试 session 和临时目录。
 
@@ -208,11 +208,14 @@ profile/agent/model/tools/cwd/skills/system-prompt；send/inbox/续聊；fork/pr
 
 M0 的 worker 是固定角色，不读取 `~/.pi/agent/agents/worker.md` 或任何 profile。
 
-## 未决
+## 首次集成确认
 
-- completion_seq 在 child 首轮完成时的取值和时序（V1/V4）；首次集成确认，不可靠则退回 status + 读取重试。
-- tab close 的确认/force 参数与 closeTabIfOnlyPane 的失败形态；失败保留 tab，不影响结果。
-- tab create / agent get 的 CLI JSON 字段以首次集成为准；adapter 只依赖 schema 稳定字段。
+T07 在 herdr 0.9.5 实测：
+
+- `tab create` 返回 `tab.tab_id` 与 `root_pane.pane_id`；`tab get` 返回 `tab.pane_count`；`pane list --workspace` 返回 `panes[].pane_id/tab_id`；`tab close <tabId>` 成功。
+- `agent get` 返回 `agent_status` 与 `completion_seq`；child 首轮完成时 completion_seq > 0。ask 弹窗期间 status 可能为 `done`，靠最后一条 assistant 仍带 toolCall 继续等。
+- `agent start` 重名错误码是 `agent_name_taken`，adapter 归一为 `name_taken`；`agent get` 不存在返回 `agent_not_found`。
+- `agent_not_ready`、`completion_seq` 为 0、tab close 失败形态仅由自动化测试覆盖，未在真实 E2E 中构造。
 
 ## 依据
 
