@@ -75,7 +75,11 @@ interface ActiveRun {
 function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
   const detail = error instanceof Error ? error.message : String(error);
   const created = paneId ? `; pane ${paneId} was created` : "";
-  return new ToolError("spawn_failed", `${detail}${created}`);
+  const trust =
+    error instanceof HerdrHostError && error.code === "agent_not_ready"
+      ? " and is likely waiting at a trust dialog; answer it in that pane, then run again"
+      : "";
+  return new ToolError("spawn_failed", `${detail}${created}${trust}`);
 }
 
 export function createSubagentService({ host, readLastAssistantText }: SubagentServiceDeps): SubagentService {
@@ -216,11 +220,8 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
           sessionFile: run.sessionFile,
         };
       } catch (error) {
-        const index = runs.indexOf(run);
-        if (index >= 0) {
-          runs.splice(index, 1);
-        }
-        throw error instanceof ToolError ? error : spawnFailed(error, run.paneId || undefined);
+        release(run);
+        throw spawnFailed(error, run.paneId || undefined);
       }
     },
 

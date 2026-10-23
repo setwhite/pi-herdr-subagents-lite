@@ -38,8 +38,13 @@ function fakePi(events: string[] = []) {
   return { pi, sent, startSession, tools };
 }
 
-function fakeHost(startFailures = 0, events?: string[]) {
-  const calls: string[] = events ?? [];
+interface FakeHostFailures {
+  createTab?: (attempt: number) => Error | undefined;
+  startAgent?: (attempt: number) => Error | undefined;
+}
+
+function fakeHost(options: { events?: string[]; failures?: FakeHostFailures } = {}) {
+  const calls: string[] = options.events ?? [];
   const tabs: Array<{ cwd: string; label: string }> = [];
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
@@ -50,6 +55,10 @@ function fakeHost(startFailures = 0, events?: string[]) {
     async createTab(input) {
       calls.push("createTab");
       tabs.push(input);
+      const error = options.failures?.createTab?.(tabs.length);
+      if (error) {
+        throw error;
+      }
       panes += 1;
       return { tabId: `w1:t${panes}`, paneId: `w1:p${panes}` };
     },
@@ -61,8 +70,9 @@ function fakeHost(startFailures = 0, events?: string[]) {
       calls.push("startAgent");
       agents.push(input);
       starts += 1;
-      if (starts <= startFailures) {
-        throw new HerdrHostError("name_taken", "taken");
+      const error = options.failures?.startAgent?.(starts);
+      if (error) {
+        throw error;
       }
     },
     async getAgent(name) {
@@ -257,18 +267,53 @@ it("starts a fresh service for each session", async () => {
   }
 });
 
-it("keeps label and paths consistent on name_taken", async () => {
+it("retries name_taken with next worker", async () => {
   process.env.HERDR_ENV = "1";
-  const { agents, host, renamedTabs } = fakeHost(1);
-  const tool = loadTool(host);
+  const calls: string[] = [];
+  const { agents, host, renamedTabs } = fakeHost({
+    events: calls,
+    failures: { startAgent: (attempt) => (attempt === 1 ? new HerdrHostError("name_taken", "taken") : undefined) },
+  });
+  const { sent, tool } = loadSession(host, calls);
 
   const started = parseStarted(await runTask(tool, "retry task"));
 
   expect(started.name).toBe("worker-2");
+  expect(calls.filter((call) => call === "createTab")).toHaveLength(1);
+  expect(calls.filter((call) => call === "startAgent")).toHaveLength(2);
   expect(renamedTabs).toEqual([{ tabId: "w1:t1", label: "worker-2" }]);
-  expect(agents).toHaveLength(2);
   expect(agents[0]?.sessionFile).toBe(agents[1]?.sessionFile);
   expect(agents[0]?.briefFile).toBe(agents[1]?.briefFile);
+  expect(sent).toHaveLength(0);
+
+  const agent = agents[0];
+  if (agent) {
+    tempDirs.add(dirname(agent.briefFile));
+  }
+});
+
+it("gives up after three name_taken retries", async () => {
+  process.env.HERDR_ENV = "1";
+  const calls: string[] = [];
+  let nameTaken = true;
+  const { agents, host } = fakeHost({
+    events: calls,
+    failures: { startAgent: () => (nameTaken ? new HerdrHostError("name_taken", "taken") : undefined) },
+  });
+  const { sent, tool } = loadSession(host, calls);
+
+  const result = await runTask(tool, "retry task");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "spawn_failed" });
+  expect(agents.map((agent) => agent.name)).toEqual(["worker-1", "worker-2", "worker-3", "worker-4"]);
+  expect(calls.filter((call) => call === "startAgent")).toHaveLength(4);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+  expect(sent).toHaveLength(0);
+
+  nameTaken = false;
+
+  expect((await runTask(tool, "next task")).isError).toBe(false);
 
   const agent = agents[0];
   if (agent) {
@@ -294,11 +339,63 @@ it("uses distinct child sessions", async () => {
   }
 });
 
+it("reports createTab failure", async () => {
+  process.env.HERDR_ENV = "1";
+  const calls: string[] = [];
+  let createTabError: Error | undefined = new HerdrHostError("tab_create_failed", "workspace is gone");
+  const { host } = fakeHost({ events: calls, failures: { createTab: () => createTabError } });
+  const { sent, tool } = loadSession(host, calls);
+
+  const result = await runTask(tool, "inspect the repo");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "spawn_failed" });
+  expect(firstText(result)).toContain("workspace is gone");
+  expect(calls.filter((call) => call === "startAgent")).toHaveLength(0);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+  expect(sent).toHaveLength(0);
+
+  createTabError = undefined;
+
+  const next = await runTask(tool, "next task");
+  expect(next.isError).toBe(false);
+  tempDirs.add(dirname(parseStarted(next).sessionFile));
+});
+
+it("reports startAgent failure with pane", async () => {
+  process.env.HERDR_ENV = "1";
+  const calls: string[] = [];
+  let ready = false;
+  const { host } = fakeHost({
+    events: calls,
+    failures: {
+      startAgent: () => (ready ? undefined : new HerdrHostError("agent_not_ready", "pi did not become ready")),
+    },
+  });
+  const { sent, tool } = loadSession(host, calls);
+
+  const result = await runTask(tool, "blocked task");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "spawn_failed" });
+  const text = firstText(result);
+  expect(text).toContain("w1:p1");
+  expect(text).toContain("trust");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+  expect(sent).toHaveLength(0);
+
+  ready = true;
+
+  const next = await runTask(tool, "next task");
+  expect(next.isError).toBe(false);
+  tempDirs.add(dirname(parseStarted(next).sessionFile));
+});
+
 it("delivers one done result", async () => {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost(0, calls);
+  const { host, setGetAgent } = fakeHost({ events: calls });
   setGetAgent(async () => ({ status: "idle", completionSeq: 1 }));
   const { sent, tool } = loadSession(host, calls);
 
@@ -328,7 +425,7 @@ it("ignores completion seq zero", async () => {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost(0, calls);
+  const { host, setGetAgent } = fakeHost({ events: calls });
   let snapshot: AgentSnapshot = { status: "idle", completionSeq: 0 };
   setGetAgent(async () => snapshot);
   const { sent, tool } = loadSession(host, calls);
@@ -354,7 +451,7 @@ it("does not overlap polls", async () => {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost(0, calls);
+  const { host, setGetAgent } = fakeHost({ events: calls });
   let resolvePoll: (snapshot: AgentSnapshot) => void = () => {};
   let polls = 0;
   setGetAgent(async () => {
@@ -383,7 +480,7 @@ it("releases the slot after done", async () => {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost(0, calls);
+  const { host, setGetAgent } = fakeHost({ events: calls });
   setGetAgent(async (name) =>
     name === "worker-1" ? { status: "idle", completionSeq: 1 } : { status: "working", completionSeq: 0 },
   );
