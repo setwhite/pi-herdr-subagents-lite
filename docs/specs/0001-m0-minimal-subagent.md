@@ -117,6 +117,7 @@ HerdrHost 是唯一宿主端口：
 | 方法 | 输入 | 输出 |
 |---|---|---|
 | createTab | cwd、label | tabId、paneId |
+| renameTab | tabId、label | void；只用于 name_taken 后同步 tab label |
 | startAgent | name、paneId、sessionFile、briefFile | void；name_taken、agent_not_ready 等错误 |
 | getAgent | name | status + completionSeq，或 null |
 | closeTabIfOnlyPane | tabId、paneId | closed 或 kept；失败按 kept |
@@ -162,7 +163,7 @@ final answer. Finish with a concise summary: what you did, where, and any open q
 
 `agent start` 返回 `agent_not_ready` 时，spawn_failed 的文本提示去 pane 处理 trust，已创建的 tab 保留。child 可能加载其他全局扩展；M0 不阻止，测试必须用隔离的 `PI_CODING_AGENT_DIR`，避免旧的 pi-herdr-subagents 同时注册 subagent。
 
-最多 4 个活跃 worker。run 在第一个 await 前同步预留槽；启动失败或 terminal 释放。第 5 个 run 返回 max_concurrent，不创建 tab。name 自动 worker-N，同一服务内单调递增、不复用；M0 不接受显式 name。name_taken 时用下一个 N 重试，最多 3 次；仍失败 spawn_failed。
+最多 4 个活跃 worker。run 在第一个 await 前同步预留槽；启动失败或 terminal 释放。第 5 个 run 返回 max_concurrent，不创建 tab。name 自动 worker-N，同一服务内单调递增、不复用；M0 不接受显式 name。name_taken 时先用下一个 N renameTab，再重试 startAgent：初始 + 最多 3 次重试，共 4 次；仍失败 spawn_failed。session/brief 路径按 run 编号生成，不随 worker name 变化。
 
 ## package 与 QA
 
