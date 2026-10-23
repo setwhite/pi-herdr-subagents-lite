@@ -118,7 +118,7 @@ HerdrHost 是唯一宿主端口：
 |---|---|---|
 | createTab | cwd、label | tabId、paneId |
 | renameTab | tabId、label | void；只用于 name_taken 后同步 tab label |
-| startAgent | name、paneId、sessionFile、briefFile | void；name_taken、agent_not_ready 等错误 |
+| startAgent | name、paneId、sessionFile、briefFile | void；先等 agent 就绪，再 prompt brief；name_taken、agent_not_ready 等错误 |
 | getAgent | name | status + completionSeq，或 null |
 | closeTabIfOnlyPane | tabId、paneId | closed 或 kept；失败按 kept |
 
@@ -146,8 +146,11 @@ RunStarted 是 `{state:"running", name, paneId, sessionFile}`；ToolError 是 `c
 
 ~~~text
 tab create ... --no-focus
-agent start <name> --kind pi --pane <paneId> --timeout 30000 -- --session <childSession> @<briefFile>
+agent start <name> --kind pi --pane <paneId> --timeout 30000 -- --session <childSession>
+agent prompt <name> @<briefFile>
 ~~~
+
+brief 不能随 `agent start` 的 argv 传入：`agent start` 要等到 agent 可交互才返回，而带首轮任务的 child 会立刻进入 working；任务超过 30s 时启动等待会超时并释放 name，返回 spawn_failed。先启动到 idle，再用 `agent prompt` 投递 `@<briefFile>`；child 用 read 工具读取 brief。
 
 M0 不传 `-e`、`--tools`、`--append-system-prompt`、`--system-prompt` 或 profile 参数；child 是普通 pi。brief：
 
@@ -215,6 +218,7 @@ T07 在 herdr 0.9.5 实测：
 - `tab create` 返回 `tab.tab_id` 与 `root_pane.pane_id`；`tab get` 返回 `tab.pane_count`；`pane list --workspace` 返回 `panes[].pane_id/tab_id`；`tab close <tabId>` 成功。
 - `agent get` 返回 `agent_status` 与 `completion_seq`；child 首轮完成时 completion_seq > 0。ask 弹窗期间 status 可能为 `done`，靠最后一条 assistant 仍带 toolCall 继续等。
 - `agent start` 重名错误码是 `agent_name_taken`，adapter 归一为 `name_taken`；`agent get` 不存在返回 `agent_not_found`。
+- `agent start` 在 child 开始首轮后不会返回 `interactive_ready`，带 @brief 启动长任务会触发 30s 超时；T08 改为 `agent start` 只带 `--session`，就绪后 `agent prompt <name> @<briefFile>`，长任务可正常返回 running。
 - `agent_not_ready`、`completion_seq` 为 0、tab close 失败形态仅由自动化测试覆盖，未在真实 E2E 中构造。
 
 ## 依据
