@@ -8,6 +8,9 @@ import type { SessionReader } from "../session/index.ts";
 const MAX_CONCURRENT = 4;
 const NAME_RETRIES = 3;
 const POLL_INTERVAL_MS = 1000;
+const POLL_FAILURE_LIMIT = 3;
+const READ_ATTEMPTS = 3;
+const READ_RETRY_DELAY_MS = 200;
 
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
 Do not spawn subagents. If you need a decision and ask_user_question is available,
@@ -29,10 +32,12 @@ export interface DoneResult {
   paneId: string;
 }
 
+export type UnknownReason = "agent_missing" | "poll_failed" | "no_result";
+
 export interface UnknownResult {
   state: "unknown";
   name: string;
-  reason: string;
+  reason: UnknownReason;
   sessionFile: string;
   paneId: string;
 }
@@ -68,7 +73,8 @@ interface ActiveRun {
   paneId: string;
   sessionFile: string;
   tabId: string;
-  pollTimer?: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
+  pollFailures: number;
   finished: boolean;
 }
 
@@ -92,34 +98,61 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
   const nextName = () => `worker-${nextWorkerNumber++}`;
   const active = () => runs.map((run) => run.name);
 
-  function clearPoll(run: ActiveRun) {
-    if (run.pollTimer !== undefined) {
-      clearTimeout(run.pollTimer);
-      run.pollTimer = undefined;
+  function clearTimer(run: ActiveRun) {
+    if (run.timer !== undefined) {
+      clearTimeout(run.timer);
+      run.timer = undefined;
     }
   }
 
   function release(run: ActiveRun) {
     run.finished = true;
-    clearPoll(run);
+    clearTimer(run);
     const index = runs.indexOf(run);
     if (index >= 0) {
       runs.splice(index, 1);
     }
   }
 
-  function schedulePoll(run: ActiveRun) {
+  function schedule(run: ActiveRun, delayMs: number, task: () => void) {
     if (run.finished) {
       return;
     }
-    run.pollTimer = setTimeout(() => {
-      void poll(run);
-    }, POLL_INTERVAL_MS);
-    run.pollTimer.unref?.();
+    run.timer = setTimeout(task, delayMs);
+    run.timer.unref?.();
+  }
+
+  function schedulePoll(run: ActiveRun) {
+    schedule(run, POLL_INTERVAL_MS, () => void poll(run));
+  }
+
+  function unknown(run: ActiveRun, reason: UnknownReason): UnknownResult {
+    return {
+      state: "unknown",
+      name: run.name,
+      reason,
+      sessionFile: run.sessionFile,
+      paneId: run.paneId,
+    };
+  }
+
+  async function finish(run: ActiveRun, result: SubagentResult) {
+    try {
+      await resultHandler?.(result);
+      if (result.state === "done") {
+        try {
+          await host.closeTabIfOnlyPane({ tabId: run.tabId, paneId: run.paneId });
+        } catch {
+          // The result is delivered; a failed close leaves the tab for a human.
+        }
+      }
+    } finally {
+      release(run);
+    }
   }
 
   async function poll(run: ActiveRun) {
-    run.pollTimer = undefined;
+    run.timer = undefined;
     if (run.finished) {
       return;
     }
@@ -128,42 +161,59 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
     try {
       snapshot = await host.getAgent(run.name);
     } catch {
+      if (run.finished) {
+        return;
+      }
+      run.pollFailures += 1;
+      if (run.pollFailures >= POLL_FAILURE_LIMIT) {
+        await finish(run, unknown(run, "poll_failed"));
+        return;
+      }
       schedulePoll(run);
       return;
     }
     if (run.finished) {
       return;
     }
+    run.pollFailures = 0;
 
-    if (snapshot && snapshot.completionSeq > 0 && (snapshot.status === "idle" || snapshot.status === "done")) {
-      await complete(run);
+    if (!snapshot) {
+      await finish(run, unknown(run, "agent_missing"));
+      return;
+    }
+
+    if (snapshot.completionSeq > 0 && (snapshot.status === "idle" || snapshot.status === "done")) {
+      await readResult(run, 1);
       return;
     }
 
     schedulePoll(run);
   }
 
-  async function complete(run: ActiveRun) {
-    try {
-      const text = readLastAssistantText(run.sessionFile);
-      if (text === null) {
-        return;
-      }
-      await resultHandler?.({
+  async function readResult(run: ActiveRun, attempt: number) {
+    run.timer = undefined;
+    if (run.finished) {
+      return;
+    }
+
+    const text = readLastAssistantText(run.sessionFile);
+    if (text !== null) {
+      await finish(run, {
         state: "done",
         name: run.name,
         text,
         sessionFile: run.sessionFile,
         paneId: run.paneId,
       });
-      try {
-        await host.closeTabIfOnlyPane({ tabId: run.tabId, paneId: run.paneId });
-      } catch {
-        // The result is delivered; a failed close leaves the tab for a human.
-      }
-    } finally {
-      release(run);
+      return;
     }
+
+    if (attempt >= READ_ATTEMPTS) {
+      await finish(run, unknown(run, "no_result"));
+      return;
+    }
+
+    schedule(run, READ_RETRY_DELAY_MS, () => void readResult(run, attempt + 1));
   }
 
   return {
@@ -179,6 +229,7 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
         paneId: "",
         sessionFile: join(runRoot, `session-${runNumber}.jsonl`),
         tabId: "",
+        pollFailures: 0,
         finished: false,
       };
       runs.push(run);
@@ -232,7 +283,7 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
     shutdown() {
       for (const run of runs) {
         run.finished = true;
-        clearPoll(run);
+        clearTimer(run);
       }
       runs.length = 0;
     },

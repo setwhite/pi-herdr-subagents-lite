@@ -35,7 +35,12 @@ function fakePi(events: string[] = []) {
       handler();
     }
   };
-  return { pi, sent, startSession, tools };
+  const shutdownSession = () => {
+    for (const handler of handlers.get("session_shutdown") ?? []) {
+      handler();
+    }
+  };
+  return { pi, sent, shutdownSession, startSession, tools };
 }
 
 interface FakeHostFailures {
@@ -97,18 +102,27 @@ function fakeHost(options: { events?: string[]; failures?: FakeHostFailures } = 
 }
 
 function loadSession(host: HerdrHost, events: string[] = []) {
-  const { pi, sent, startSession, tools } = fakePi(events);
+  const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
   createExtension({ host, readLastAssistantText })(pi);
   startSession();
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
     throw new Error(`expected one registered tool, got ${tools.length}`);
   }
-  return { sent, startSession, tool };
+  return { sent, shutdownSession, startSession, tool };
 }
 
 function loadTool(host: HerdrHost) {
   return loadSession(host).tool;
+}
+
+function loadTimedSession(getAgent: (name: string) => Promise<AgentSnapshot | null>) {
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  const calls: string[] = [];
+  const fake = fakeHost({ events: calls });
+  fake.setGetAgent(getAgent);
+  return { ...loadSession(fake.host, calls), calls };
 }
 
 function runTask(tool: SubagentTool, task: string) {
@@ -392,12 +406,7 @@ it("reports startAgent failure with pane", async () => {
 });
 
 it("delivers one done result", async () => {
-  vi.useFakeTimers();
-  process.env.HERDR_ENV = "1";
-  const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost({ events: calls });
-  setGetAgent(async () => ({ status: "idle", completionSeq: 1 }));
-  const { sent, tool } = loadSession(host, calls);
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "say hello"));
   tempDirs.add(dirname(started.sessionFile));
@@ -422,13 +431,8 @@ it("delivers one done result", async () => {
 });
 
 it("ignores completion seq zero", async () => {
-  vi.useFakeTimers();
-  process.env.HERDR_ENV = "1";
-  const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost({ events: calls });
   let snapshot: AgentSnapshot = { status: "idle", completionSeq: 0 };
-  setGetAgent(async () => snapshot);
-  const { sent, tool } = loadSession(host, calls);
+  const { calls, sent, tool } = loadTimedSession(async () => snapshot);
 
   const started = parseStarted(await runTask(tool, "status first"));
   tempDirs.add(dirname(started.sessionFile));
@@ -448,13 +452,9 @@ it("ignores completion seq zero", async () => {
 });
 
 it("does not overlap polls", async () => {
-  vi.useFakeTimers();
-  process.env.HERDR_ENV = "1";
-  const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost({ events: calls });
   let resolvePoll: (snapshot: AgentSnapshot) => void = () => {};
   let polls = 0;
-  setGetAgent(async () => {
+  const { tool } = loadTimedSession(async () => {
     polls += 1;
     if (polls === 1) {
       return new Promise<AgentSnapshot>((resolve) => {
@@ -463,7 +463,6 @@ it("does not overlap polls", async () => {
     }
     return { status: "working", completionSeq: 0 };
   });
-  const { tool } = loadSession(host, calls);
 
   const started = parseStarted(await runTask(tool, "slow task"));
   tempDirs.add(dirname(started.sessionFile));
@@ -477,14 +476,9 @@ it("does not overlap polls", async () => {
 });
 
 it("releases the slot after done", async () => {
-  vi.useFakeTimers();
-  process.env.HERDR_ENV = "1";
-  const calls: string[] = [];
-  const { host, setGetAgent } = fakeHost({ events: calls });
-  setGetAgent(async (name) =>
+  const { sent, tool } = loadTimedSession(async (name) =>
     name === "worker-1" ? { status: "idle", completionSeq: 1 } : { status: "working", completionSeq: 0 },
   );
-  const { sent, tool } = loadSession(host, calls);
 
   const started: RunStarted[] = [];
   for (let index = 1; index <= 4; index++) {
@@ -504,4 +498,107 @@ it("releases the slot after done", async () => {
 
   expect(fifth.isError).toBe(false);
   expect(parseStarted(fifth).name).toBe("worker-5");
+});
+
+it("reports missing agent as unknown", async () => {
+  const { calls, sent, tool } = loadTimedSession(async () => null);
+
+  const started = parseStarted(await runTask(tool, "vanished task"));
+  tempDirs.add(dirname(started.sessionFile));
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content).toContain("unknown (agent_missing)");
+  expect(content).toContain(`Session: ${started.sessionFile}`);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(sent).toHaveLength(1);
+
+  const next = await runTask(tool, "next task");
+  expect(next.isError).toBe(false);
+  tempDirs.add(dirname(parseStarted(next).sessionFile));
+});
+
+it("reports three consecutive poll failures", async () => {
+  const { calls, sent, tool } = loadTimedSession(async () => {
+    throw new Error("herdr answered with garbage");
+  });
+
+  const started = parseStarted(await runTask(tool, "flaky task"));
+  tempDirs.add(dirname(started.sessionFile));
+
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("unknown (poll_failed)");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+});
+
+it("resets poll failure count on success", async () => {
+  let polls = 0;
+  const { calls, sent, tool } = loadTimedSession(async () => {
+    polls += 1;
+    if (polls <= 2) {
+      throw new Error("temporary herdr error");
+    }
+    return { status: "idle", completionSeq: 1 };
+  });
+
+  const started = parseStarted(await runTask(tool, "eventual success"));
+  tempDirs.add(dirname(started.sessionFile));
+  writeFileSync(started.sessionFile, `${assistantLine("finished")}\n`);
+
+  await vi.advanceTimersByTimeAsync(3000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(content).not.toContain("unknown");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+});
+
+it("reports unreadable result as unknown", async () => {
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+
+  const started = parseStarted(await runTask(tool, "no output"));
+  tempDirs.add(dirname(started.sessionFile));
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(400);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content).toContain("unknown (no_result)");
+  expect(content).toContain(`Session: ${started.sessionFile}`);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+
+  const next = await runTask(tool, "next task");
+  expect(next.isError).toBe(false);
+  tempDirs.add(dirname(parseStarted(next).sessionFile));
+});
+
+it("stops after session shutdown", async () => {
+  const { calls, sent, shutdownSession, tool } = loadTimedSession(async () => ({
+    status: "working",
+    completionSeq: 0,
+  }));
+
+  const started = parseStarted(await runTask(tool, "long task"));
+  tempDirs.add(dirname(started.sessionFile));
+
+  shutdownSession();
+  await vi.advanceTimersByTimeAsync(5000);
+
+  expect(sent).toHaveLength(0);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 });
