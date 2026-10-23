@@ -11,6 +11,7 @@ const POLL_INTERVAL_MS = 1000;
 const POLL_FAILURE_LIMIT = 3;
 const READ_ATTEMPTS = 3;
 const READ_RETRY_DELAY_MS = 200;
+const MAX_RESULT_CHARS = 16384;
 
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
 Do not spawn subagents. If you need a decision and ask_user_question is available,
@@ -76,6 +77,19 @@ interface ActiveRun {
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;
   finished: boolean;
+}
+
+function leadingChars(text: string): string {
+  const last = text.charCodeAt(MAX_RESULT_CHARS - 1);
+  const cut = last >= 0xd800 && last <= 0xdbff ? MAX_RESULT_CHARS - 1 : MAX_RESULT_CHARS;
+  return text.slice(0, cut);
+}
+
+function resultText(text: string, sessionFile: string): string {
+  if (text.length <= MAX_RESULT_CHARS) {
+    return text;
+  }
+  return `${leadingChars(text)}\n\n[truncated at ${MAX_RESULT_CHARS} characters]\n\nSession: ${sessionFile}`;
 }
 
 function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
@@ -201,7 +215,7 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
       await finish(run, {
         state: "done",
         name: run.name,
-        text,
+        text: resultText(text, run.sessionFile),
         sessionFile: run.sessionFile,
         paneId: run.paneId,
       });

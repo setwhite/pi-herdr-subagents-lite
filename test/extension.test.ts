@@ -48,7 +48,9 @@ interface FakeHostFailures {
   startAgent?: (attempt: number) => Error | undefined;
 }
 
-function fakeHost(options: { events?: string[]; failures?: FakeHostFailures } = {}) {
+function fakeHost(
+  options: { events?: string[]; failures?: FakeHostFailures; closeTab?: () => "closed" | "kept" | Error } = {},
+) {
   const calls: string[] = options.events ?? [];
   const tabs: Array<{ cwd: string; label: string }> = [];
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
@@ -86,7 +88,11 @@ function fakeHost(options: { events?: string[]; failures?: FakeHostFailures } = 
     },
     async closeTabIfOnlyPane() {
       calls.push("closeTabIfOnlyPane");
-      return "closed";
+      const outcome = options.closeTab?.() ?? "closed";
+      if (outcome instanceof Error) {
+        throw outcome;
+      }
+      return outcome;
     },
   };
   return {
@@ -116,11 +122,14 @@ function loadTool(host: HerdrHost) {
   return loadSession(host).tool;
 }
 
-function loadTimedSession(getAgent: (name: string) => Promise<AgentSnapshot | null>) {
+function loadTimedSession(
+  getAgent: (name: string) => Promise<AgentSnapshot | null>,
+  closeTab?: () => "closed" | "kept" | Error,
+) {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
-  const fake = fakeHost({ events: calls });
+  const fake = fakeHost({ events: calls, closeTab });
   fake.setGetAgent(getAgent);
   return { ...loadSession(fake.host, calls), calls };
 }
@@ -585,6 +594,76 @@ it("reports unreadable result as unknown", async () => {
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
   tempDirs.add(dirname(parseStarted(next).sessionFile));
+});
+
+it("truncates long result", async () => {
+  const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+
+  const started = parseStarted(await runTask(tool, "write a long report"));
+  tempDirs.add(dirname(started.sessionFile));
+  const head = "h".repeat(16384);
+  const tail = "TAIL_MARKER".padEnd(616, "t");
+  writeFileSync(started.sessionFile, `${assistantLine(`${head}${tail}`)}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(content).toContain(head);
+  expect(content).not.toContain("TAIL_MARKER");
+  expect(content).toContain("truncated");
+  expect(content).toContain(started.sessionFile);
+
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(sent).toHaveLength(1);
+});
+
+it("does not split surrogate pairs when truncating", async () => {
+  const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+
+  const started = parseStarted(await runTask(tool, "emoji report"));
+  tempDirs.add(dirname(started.sessionFile));
+  const head = `${"h".repeat(16383)}😀`;
+  writeFileSync(started.sessionFile, `${assistantLine(`${head}${"z".repeat(100)}`)}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content).toContain("h".repeat(16383));
+  expect(content).toContain("truncated");
+  expect(content).not.toMatch(/\p{Cs}/u);
+});
+
+async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error) {
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }), closeTab);
+
+  const started = parseStarted(await runTask(tool, "say hello"));
+  tempDirs.add(dirname(started.sessionFile));
+  writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(content).toContain("hello");
+  expect(content).not.toContain("error");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+
+  const next = await runTask(tool, "next task");
+  expect(next.isError).toBe(false);
+  expect(parseStarted(next).name).toBe("worker-2");
+  tempDirs.add(dirname(parseStarted(next).sessionFile));
+}
+
+it("keeps tab when close is refused", async () => {
+  await expectDoneDespiteClose(() => "kept");
+});
+
+it("keeps tab when close throws", async () => {
+  await expectDoneDespiteClose(() => new Error("herdr tab close failed"));
 });
 
 it("stops after session shutdown", async () => {
