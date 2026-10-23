@@ -160,8 +160,8 @@ export function createHerdrHost(): HerdrHost {
         "--",
         "--session",
         sessionFile,
-        `@${briefFile}`,
       ]);
+      await execHerdrJson(["agent", "prompt", name, `@${briefFile}`]);
     },
 
     async getAgent(name) {
