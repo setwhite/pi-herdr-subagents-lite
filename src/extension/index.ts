@@ -1,10 +1,18 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { HerdrHost } from "../herdr/index.ts";
-import { createSubagentService, type RunStarted, type SubagentService, ToolError } from "../subagent/index.ts";
+import type { SessionReader } from "../session/index.ts";
+import {
+  createSubagentService,
+  type RunStarted,
+  type SubagentResult,
+  type SubagentService,
+  ToolError,
+} from "../subagent/index.ts";
 
 export interface ExtensionDeps {
   host: HerdrHost;
+  readLastAssistantText: SessionReader;
 }
 
 const parameters = Type.Object(
@@ -18,8 +26,12 @@ const parameters = Type.Object(
 export type SubagentTool = ToolDefinition<typeof parameters>;
 
 export interface ExtensionRegistrar {
-  on(event: "session_start", handler: () => void): void;
+  on(event: "session_start" | "session_shutdown", handler: () => void): void;
   registerTool(tool: SubagentTool): void;
+  sendMessage(
+    message: { customType: string; content: string; display: boolean },
+    options?: { triggerTurn?: boolean },
+  ): void;
 }
 
 function notInHerdr() {
@@ -51,14 +63,49 @@ function toolFailed(error: ToolError) {
   };
 }
 
+function resultText(result: SubagentResult): string {
+  if (result.state === "unknown") {
+    return `[subagent ${result.name}] unknown (${result.reason})\n\nSession: ${result.sessionFile}`;
+  }
+  return `[subagent ${result.name}] done\n\n${result.text}`;
+}
+
 export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) => void {
   return (pi: ExtensionRegistrar) => {
     let service: SubagentService | undefined;
-    const currentService = () => (service ??= createSubagentService({ host: deps.host }));
+
+    const deliver = (result: SubagentResult) => {
+      pi.sendMessage(
+        { customType: "subagent_result", content: resultText(result), display: true },
+        { triggerTurn: true },
+      );
+    };
+
+    const startService = (): SubagentService => {
+      service?.shutdown();
+      service = createSubagentService({
+        host: deps.host,
+        readLastAssistantText: deps.readLastAssistantText,
+      });
+      service.onResult(deliver);
+      return service;
+    };
 
     pi.on("session_start", () => {
-      service = createSubagentService({ host: deps.host });
+      startService();
     });
+
+    pi.on("session_shutdown", () => {
+      service?.shutdown();
+      service = undefined;
+    });
+
+    const currentService = (): SubagentService => {
+      if (!service) {
+        throw new Error("subagent service is not started");
+      }
+      return service;
+    };
 
     pi.registerTool({
       name: "subagent",

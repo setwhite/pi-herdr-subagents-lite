@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type HerdrHost, HerdrHostError } from "../herdr/index.ts";
+import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
+import type { SessionReader } from "../session/index.ts";
 
 const MAX_CONCURRENT = 4;
 const NAME_RETRIES = 3;
+const POLL_INTERVAL_MS = 1000;
 
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
 Do not spawn subagents. If you need a decision and ask_user_question is available,
@@ -19,6 +21,26 @@ export interface RunStarted {
   sessionFile: string;
 }
 
+export interface DoneResult {
+  state: "done";
+  name: string;
+  text: string;
+  sessionFile: string;
+  paneId: string;
+}
+
+export interface UnknownResult {
+  state: "unknown";
+  name: string;
+  reason: string;
+  sessionFile: string;
+  paneId: string;
+}
+
+export type SubagentResult = DoneResult | UnknownResult;
+
+export type ResultHandler = (result: SubagentResult) => void | Promise<void>;
+
 export class ToolError extends Error {
   readonly code: string;
 
@@ -31,11 +53,14 @@ export class ToolError extends Error {
 
 export interface SubagentService {
   run(task: string): Promise<RunStarted>;
+  onResult(handler: ResultHandler): void;
+  shutdown(): void;
   active(): string[];
 }
 
 export interface SubagentServiceDeps {
   host: HerdrHost;
+  readLastAssistantText: SessionReader;
 }
 
 interface ActiveRun {
@@ -43,6 +68,8 @@ interface ActiveRun {
   paneId: string;
   sessionFile: string;
   tabId: string;
+  pollTimer?: ReturnType<typeof setTimeout>;
+  finished: boolean;
 }
 
 function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
@@ -51,14 +78,89 @@ function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
   return new ToolError("spawn_failed", `${detail}${created}`);
 }
 
-export function createSubagentService({ host }: SubagentServiceDeps): SubagentService {
+export function createSubagentService({ host, readLastAssistantText }: SubagentServiceDeps): SubagentService {
   const runs: ActiveRun[] = [];
   const runRoot = join(tmpdir(), "pi-herdr-subagents-lite", `${Date.now()}-${randomUUID()}`);
   let nextWorkerNumber = 1;
   let nextRunNumber = 1;
+  let resultHandler: ResultHandler | undefined;
 
   const nextName = () => `worker-${nextWorkerNumber++}`;
   const active = () => runs.map((run) => run.name);
+
+  function clearPoll(run: ActiveRun) {
+    if (run.pollTimer !== undefined) {
+      clearTimeout(run.pollTimer);
+      run.pollTimer = undefined;
+    }
+  }
+
+  function release(run: ActiveRun) {
+    run.finished = true;
+    clearPoll(run);
+    const index = runs.indexOf(run);
+    if (index >= 0) {
+      runs.splice(index, 1);
+    }
+  }
+
+  function schedulePoll(run: ActiveRun) {
+    if (run.finished) {
+      return;
+    }
+    run.pollTimer = setTimeout(() => {
+      void poll(run);
+    }, POLL_INTERVAL_MS);
+    run.pollTimer.unref?.();
+  }
+
+  async function poll(run: ActiveRun) {
+    run.pollTimer = undefined;
+    if (run.finished) {
+      return;
+    }
+
+    let snapshot: AgentSnapshot | null;
+    try {
+      snapshot = await host.getAgent(run.name);
+    } catch {
+      schedulePoll(run);
+      return;
+    }
+    if (run.finished) {
+      return;
+    }
+
+    if (snapshot && snapshot.completionSeq > 0 && (snapshot.status === "idle" || snapshot.status === "done")) {
+      await complete(run);
+      return;
+    }
+
+    schedulePoll(run);
+  }
+
+  async function complete(run: ActiveRun) {
+    try {
+      const text = readLastAssistantText(run.sessionFile);
+      if (text === null) {
+        return;
+      }
+      await resultHandler?.({
+        state: "done",
+        name: run.name,
+        text,
+        sessionFile: run.sessionFile,
+        paneId: run.paneId,
+      });
+      try {
+        await host.closeTabIfOnlyPane({ tabId: run.tabId, paneId: run.paneId });
+      } catch {
+        // The result is delivered; a failed close leaves the tab for a human.
+      }
+    } finally {
+      release(run);
+    }
+  }
 
   return {
     async run(task) {
@@ -73,6 +175,7 @@ export function createSubagentService({ host }: SubagentServiceDeps): SubagentSe
         paneId: "",
         sessionFile: join(runRoot, `session-${runNumber}.jsonl`),
         tabId: "",
+        finished: false,
       };
       runs.push(run);
 
@@ -104,6 +207,8 @@ export function createSubagentService({ host }: SubagentServiceDeps): SubagentSe
           }
         }
 
+        schedulePoll(run);
+
         return {
           state: "running",
           name: run.name,
@@ -117,6 +222,18 @@ export function createSubagentService({ host }: SubagentServiceDeps): SubagentSe
         }
         throw error instanceof ToolError ? error : spawnFailed(error, run.paneId || undefined);
       }
+    },
+
+    onResult(handler) {
+      resultHandler = handler;
+    },
+
+    shutdown() {
+      for (const run of runs) {
+        run.finished = true;
+        clearPoll(run);
+      }
+      runs.length = 0;
     },
 
     active,
