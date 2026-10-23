@@ -1,6 +1,6 @@
 # herdr 恢复与状态实测
 
-研究记录；当前契约见 `docs/specs/0001-m0-minimal-subagent.md` 与 `docs/DECISIONS.md`。
+研究记录；当前契约见 [CONTRACT](../CONTRACT.md)，决策见 [DECISIONS](../DECISIONS.md)，M0 快照见 [archive/m0](../archive/m0/README.md)。
 
 日期 2026-10-23。环境：herdr 0.9.5（Windows，protocol 22），pi 1.4.0。测试在隔离的 named session 里跑（`herdr --session u16test server` / `u16b`），未触碰 default session；测试后 `herdr session delete`。
 
@@ -8,7 +8,7 @@
 
 1. **server 重启后保留**：agent name（`tester`）、pane id（`w1:p1`）、`agent_session_path`、`pane label`（`pane rename` 设置）。**不保留**：`pane.report_metadata` 的 `title` 与 `tokens`（重启后 `pane list` 里消失）。`terminal_id` 会变。
 2. **恢复命令是规范的 `pi --session <path>`**：启动时的额外 argv（`-e probe.ts`）在重启后丢失；`pane process-info` 的 `foreground_processes[0].argv` 只剩 `["pi","--session",path]`。依赖 `-e` 注入的子代理侧扩展在恢复后不存在。
-3. **pi 的 herdr 集成走生命周期钩子，屏幕检测被跳过**：`agent explain --json` 返回 `screen_detection_skipped: true`、`screen_detection_skip_reason: "full_lifecycle_hook_authority"`。`ask_user_question` 弹窗显示在 pane 里时，`agent get` 仍是 `working`；全机没有扩展 emit `herdr:blocked`，只有 `~/.pi/agent/extensions/herdr-agent-state.ts:211` 在监听。
+3. **pi 的 herdr 集成走生命周期钩子，屏幕检测被跳过**：`agent explain --json` 返回 `screen_detection_skipped: true`、`screen_detection_skip_reason: "full_lifecycle_hook_authority"`。`ask_user_question` 弹窗显示在 pane 里时，`agent get` 仍是 `working`；全机只有 `~/.pi/agent/extensions/herdr-agent-state.ts:211` 在监听 `herdr:blocked`，没有第三方 emit 方；本项目的 bridge 是 emit 方（见测试 3）。
 4. **恢复后被中断的轮不会自动重放**：session 里保留悬空 `toolCall`（没有 `toolResult`）；下一轮模型看到的是 “No result provided”，然后自行决定重试。测试里模型重试了 `sleep 120`。restart 不是副作用安全。
 
 ## 依据
@@ -65,6 +65,8 @@ herdr --session u16test agent explain tester --json
 
 `~/.pi/agent/extensions/herdr-agent-state.ts:211` 监听 `herdr:blocked`；`rg 'herdr:blocked' ~/.pi/agent/npm/node_modules ~/.pi/agent/extensions` 只命中这一处监听，没有 emit 方。
 
+本项目的 `bridge` 实测：`ui_prompt_start/end` → `herdr:blocked` 后，ask 弹窗期间 `agent get` 为 `blocked`，`agent prompt` 返回 `agent_blocked`；Esc 后恢复 `idle`。见 [DECISIONS](../DECISIONS.md) D40。
+
 ### 测试 4：恢复后的悬空工具调用
 
 在 `sleep 120` 的 codemode 调用进行中 `server stop`，重启后 session 文件最后一条是 assistant `toolCall`，没有对应 `toolResult`。发一条“继续”后，新 assistant 的 thinking 记录：
@@ -75,5 +77,6 @@ herdr --session u16test agent explain tester --json
 
 ## 未决
 
-- M0：completion_seq 首轮时序、tab close 参数与失败形态；见 M0 spec。
-- v1：非 ask 阻塞 UI、`agent start` 带 `@brief.md` 的首轮状态、`send` 到 blocked、artifact 清理；见 `docs/DECISIONS.md` 的 V1–V7。
+- M0：completion_seq 首轮时序、tab close 参数与失败形态；见 [M0 spec](../archive/m0/spec.md)。
+- v1 已定：`send` 到 blocked 排队；artifact v1 不清理。
+- v1 待验证：done 时 session 是否已落盘；server 重启时 pending ask 是否重绘。见 [DECISIONS](../DECISIONS.md) 的 V4/V7。

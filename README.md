@@ -1,10 +1,19 @@
+
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。M0 只验证最小闭环；v1 目标见决策表。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码是 M0：只支持 `run`、固定 worker、异步结果；v1 的 profile、send、bridge、恢复与 npm 发布是目标，契约见 [CONTRACT](docs/CONTRACT.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
-扩展入口是 `src/index.ts`；pi 用 jiti 直接加载 TypeScript，不需要构建。目前不发布 npm，直接在 herdr pane 内用 `-e` 加载：
+发布后：
+
+~~~bash
+pi install npm:pi-herdr-subagents-lite
+~~~
+
+全局安装同时加载 orchestrator 与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
+
+开发时直接加载源码：
 
 ~~~bash
 pi -e ./src/index.ts
@@ -18,18 +27,17 @@ pnpm check                            # lint + check:imports + typecheck + test
 git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 ~~~
 
-真实 herdr 的手工 E2E 见 [M0 spec](docs/specs/0001-m0-minimal-subagent.md) 与 `docs/todos/T07.md`、`docs/todos/T08.md`。
+真实 herdr 的手工 E2E 见 [e2e/herdr.md](docs/e2e/herdr.md)。
 
 ## 文档
 
-- [M0 spec](docs/specs/0001-m0-minimal-subagent.md) — 当前实现范围、接口与验收；写代码前先看。
-- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、目录 / 测试 / 文档约定。
-- [配置与工具面](docs/配置与工具面.md) — v1 配置、工具 schema、提示词；M0 不实现。
-- [DECISIONS](docs/DECISIONS.md) — v1 决策与理由。
+- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块说明。
+- [CONTRACT](docs/CONTRACT.md) — v1 配置、profile、工具、send、结果、bridge。
+- [PROMPTS](docs/PROMPTS.md) — 工具文案、任务简报、子代理提示词。
+- [DECISIONS](docs/DECISIONS.md) — 决策与理由、取消项、边界与验证。
 - [GLOSSARY](docs/GLOSSARY.md) — 术语。
-- 模块文档：[extension](docs/modules/extension.md)、[subagent](docs/modules/subagent.md)、[herdr](docs/modules/herdr.md)、[session](docs/modules/session.md)。
-- [任务台账](docs/todos/README.md) — M0 的 T01–T08 与后续里程碑。
-- [审计记录](docs/audit/) — 每个任务的只读审计结论。
-- [参考项目对比](docs/research/子代理实现对比.md) — 路线选型依据。
+- [herdr E2E](docs/e2e/herdr.md) — 当前 M0 的手工回归 runbook。
+- [M0 归档](docs/archive/m0/README.md) — spec、任务/审计、E2E 记录。
+- [任务台账](docs/todos/README.md) — v1 里程碑。
+- [参考实现](docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
 - [herdr 恢复与状态实测](docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
-- [pi-herdr-subagents 参考](docs/research/pi-herdr-subagents-参考.md) — 参考实现的流程、字段与取舍。

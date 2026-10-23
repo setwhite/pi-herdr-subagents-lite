@@ -1,22 +1,49 @@
-# T08 真实失败路径
+# M0 E2E 记录（归档）
 
-- [x]
+> 历史记录，不再更新。命令里的 pnpm build / dist/index.js 已失效；当前 runbook 见 [e2e/herdr.md](../../e2e/herdr.md)。
 
-## 交付物
+## T07 正常路径
 
-真实 herdr 下验证并修通：第 5 个并发被拒且不开 tab；子进程被杀得到 unknown 且保留 tab；父会话 /new 后旧 worker 不被认领、不再投递；测试环境清理。
 
-起点：T07 正常路径通过，但 AC2–AC4 未验证；AC1 是既有 QA，保持绿。
+环境：herdr 0.9.5、pi 1.4.0、Windows；命名 session `t07probe`。隔离目录 `$T07ROOT\agent` 复制 auth、最小 settings；server 以 `PI_CODING_AGENT_DIR=$T07ROOT\agent` 启动，子 tab 继承。父进程：
 
-## 验收
+~~~powershell
+$T07ROOT = "C:\Users\CHARLE~1\AppData\Local\Temp\t07e2e.E7X4UT"
+pi --no-extensions -e dist/index.js --no-skills --no-prompt-templates --no-context-files --no-mcp --tools subagent --session "$T07ROOT\agent\parent.jsonl"
+~~~
 
-- AC1：`pnpm check` 通过。
-- AC2：真实并发：4 个长任务运行中，第 5 个 run 返回 max_concurrent，文本含 4 个 name；herdr 中没有第 5 个 tab。
-- AC3：真实 unknown：杀掉/释放一个运行中的子 agent；父会话收到一条 unknown，含 Session 路径；对应 tab 仍在，未 close。
-- AC4：真实父切换：在父 pi 执行 /new；等待旧 worker 结束；新会话没有 subagent_result，旧 worker 未被认领；旧 tab 由人工清理。
-- AC5：清理：herdr session 删除、PI_CODING_AGENT_DIR 临时目录删除；全局配置未改。
+正常路径（AC2）：在父 pane 发送只读任务；工具返回
 
-## E2E 记录
+~~~json
+{"state":"running","name":"worker-1","paneId":"w1:p6","sessionFile":"C:\\Users\\Charles Liu\\AppData\\Local\\Temp\\pi-herdr-subagents-lite\\1792755596863-ee4147b7-babc-4e05-b240-1fde81fcbaa3\\session-1.jsonl"}
+~~~
+
+新 tab `worker-1`（`w1:t6`）出现子 pi；父 pane 收到一条 `[subagent worker-1] done`，结果首行 `First markdown heading: # pi-herdr-subagents-lite`；随后 `tab list` 无 `w1:t6`，`agent list` 无 `worker-1`。子 session 的 tool 面只有 read/bash/edit/write，未加载旧 `pi-herdr-subagents` 或 ask。
+
+真实 name_taken（AC2 附带）：预占 `worker-1` 后运行。herdr 原始错误：
+
+~~~json
+{"error":{"code":"agent_name_taken","message":"agent name tester2 is already used; ..."}}
+~~~
+
+适配器归一为 `name_taken` 后，subagent 重命名 tab 并以 `worker-2` 重试成功：返回 `{"state":"running","name":"worker-2","paneId":"w1:pB","sessionFile":"C:\\Users\\Charles Liu\\AppData\\Local\\Temp\\pi-herdr-subagents-lite\\1792755775059-e8851f11-3204-4388-b7c9-8fc59a073aca\\session-1.jsonl"}`，done 后 tab 关闭。
+
+反问（AC3）：隔离环境只加 ask 包（未加旧 subagent）；该 run 的 sessionFile 是 `C:\Users\Charles Liu\AppData\Local\Temp\pi-herdr-subagents-lite\1792756464378-c7639a9f-7cd1-4fec-9429-bb261a46266b\session-1.jsonl`。派发要求子代理提问的任务；子 pane `w1:pG` 出现 `Which file should I read?`，父 pane 等待 18s 无转发、无 answer、无 unknown。在子 pane 按 Enter 选择 README 后，父 pane 只收到一条：
+
+~~~text
+[subagent worker-1] done
+
+Asked once; you chose README.md.
+First markdown heading: # pi-herdr-subagents-lite
+~~~
+
+随后子 tab 关闭，`agent list` 无 worker-1；父 session 无 `subagent_question`/answer 消息。E2E 暴露并修复：herdr 在 ask 弹窗期间报 `agent_status=done` + `completion_seq>0`，旧逻辑会读不到最终文本而投 `unknown (no_result)`；现在 SessionReader 返回 `{text,pendingToolCall}`，最后一条 assistant 仍带 toolCall 时继续轮询。
+
+清理：`herdr --session t07probe server stop`、`herdr session delete t07probe`、删除 `$T07ROOT` 与对应 `/tmp/pi-herdr-subagents-lite` run root；全局配置未改。
+
+
+## T08 失败路径
+
 
 环境：herdr 0.9.5、pi 1.4.0、Windows；命名 session `t08probe`；隔离 agent dir `C:\Users\CHARLE~1\AppData\Local\Temp\t08e2e.4olWUR\agent`（本次实际路径，已按 AC5 删除）。server 以该 `PI_CODING_AGENT_DIR` 启动，父/子 pane 继承。
 
@@ -149,7 +176,3 @@ Session: C:\Users\Charles Liu\AppData\Local\Temp\pi-herdr-subagents-lite\1792758
 ### AC5 清理
 
 `herdr --session t08probe server stop`、`herdr session delete t08probe` 后 `herdr session list` 只剩 `default`。删除 `C:\Users\CHARLE~1\AppData\Local\Temp\t08e2e.4olWUR` 和本次 4 个 `/tmp/pi-herdr-subagents-lite` run root，`/tmp/pi-herdr-subagents-lite` 为空。全局 `~/.pi/agent/settings.json` mtime `2026-10-23 19:36:47`、`auth.json` mtime `16:30:44`，都早于本会话；全局 `keybindings.json` 未创建；`C:\Users\Charles Liu\AppData\Roaming\herdr\config.toml` mtime `2026-10-01 22:46`，未改。
-
-## 前置
-
-T07
