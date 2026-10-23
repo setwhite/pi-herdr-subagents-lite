@@ -170,9 +170,9 @@ final answer. Finish with a concise summary: what you did, where, and any open q
 
 ## package 与 QA
 
-M0 是最小 package，不是单文件：ESM、private、包名 `pi-herdr-subagents-lite`，`pi.extensions` 指向构建后的入口。package 根就是仓库工作目录；`src/` 放模块，`test/` 放 vitest，`dist/` 是构建产物；用 `pi -e` 加载 dist，不做全局安装。
+M0 是最小 package，不是单文件：ESM、private、包名 `pi-herdr-subagents-lite`，`pi.extensions` 指向 `src/index.ts`。package 根就是仓库工作目录；`src/` 放模块，`test/` 放 vitest；pi 用 jiti 直接加载 TypeScript，不需要构建；用 `pi -e` 加载，不做全局安装。
 
-脚本：build 用 tsc；typecheck 用 tsc --noEmit；lint 用 biome check；test 用 vitest run；check 依次跑 typecheck、lint、test、build。devDependencies 包含 typescript、@biomejs/biome、vitest、@types/node；`@earendil-works/pi-coding-agent` 作为 peer 和 dev 依赖。只用 pnpm。
+脚本：typecheck 用 tsc --noEmit；lint 用 biome check；test 用 vitest run；check 依次跑 typecheck、lint、test。devDependencies 包含 typescript、@biomejs/biome、vitest、@types/node；`@earendil-works/pi-coding-agent` 作为 peer 和 dev 依赖。只用 pnpm。
 
 M0 没有配置文件。常量：maxConcurrent 4、pollIntervalMs 1000、readRetries 3、readRetryDelayMs 200、pollFailureLimit 3、maxResultChars 16384、closeOnDone true。
 
@@ -186,9 +186,9 @@ M0 没有配置文件。常量：maxConcurrent 4、pollIntervalMs 1000、readRet
 
 自动化覆盖：schema 与 not_in_herdr；run/并发/命名；完成、去重、completionSeq 0、串行轮询、带 toolCall 的等待；启动失败与 name_taken；unknown、轮询失败、结果读取失败、shutdown；截断、关 tab kept/抛错；SessionReader 表驱动。具体 AC 见 `docs/todos/` 的 T01–T08。
 
-手工 E2E：隔离的 `PI_CODING_AGENT_DIR`（复制 auth，不打印、不提交，测后删除；最小 settings，不加载旧包）+ 命名 herdr session；`pnpm build` 后用 `pi -e` 加载 dist；跑正常只读任务并确认 tab、结果、关 tab；验证第 5 个并发、杀掉子进程的 unknown、父 /new 不认领、子 pane 反问不转发；最后删除测试 session 和临时目录。
+手工 E2E：隔离的 `PI_CODING_AGENT_DIR`（复制 auth，不打印、不提交，测后删除；最小 settings，不加载旧包）+ 命名 herdr session；用 `pi -e` 直接加载 `src/index.ts`；跑正常只读任务并确认 tab、结果、关 tab；验证第 5 个并发、杀掉子进程的 unknown、父 /new 不认领、子 pane 反问不转发；最后删除测试 session 和临时目录。
 
-QA：`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`；收工跑 `pnpm check`。
+QA：`pnpm typecheck`、`pnpm lint`、`pnpm test`；收工跑 `pnpm check`。
 
 ## 非功能
 

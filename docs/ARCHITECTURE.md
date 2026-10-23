@@ -2,7 +2,7 @@
 
 ## 边界
 
-M0 是一个最小 package，package 根就是仓库工作目录：代码在 `src/`，测试在 `test/`，构建产物在 `dist/`，文档在 `docs/`。只做 herdr；按功能分模块，不按 controller/service/adapter 分层。行为与验收见 `docs/specs/0001-m0-minimal-subagent.md`；v1 决策见 `docs/DECISIONS.md`。
+M0 是一个最小 package，package 根就是仓库工作目录：代码在 `src/`，测试在 `test/`，文档在 `docs/`。只做 herdr；按功能分模块，不按 controller/service/adapter 分层。行为与验收见 `docs/specs/0001-m0-minimal-subagent.md`；v1 决策见 `docs/DECISIONS.md`。
 
 入口只装配真实依赖，不持有运行态；SubagentService 由 extension 在 `session_start` 创建。
 

@@ -2,6 +2,8 @@
 
 在 herdr pane 里运行 pi 子代理的扩展。M0 只验证最小闭环；v1 目标见决策表。
 
+扩展入口是 `src/index.ts`；pi 用 jiti 直接加载 TypeScript，不需要构建。
+
 ## 文档
 
 - [M0 spec](docs/specs/0001-m0-minimal-subagent.md) — 当前实现范围、接口与验收；写代码前先看。
