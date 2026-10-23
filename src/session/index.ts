@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 
-export type SessionReader = (path: string) => string | null;
+export interface SessionSnapshot {
+  text: string | null;
+  pendingToolCall: boolean;
+}
+
+export type SessionReader = (path: string) => SessionSnapshot;
 
 interface SessionEntry {
   type?: unknown;
@@ -18,6 +23,16 @@ function isTextBlock(block: unknown): block is { type: "text"; text: string } {
   return candidate.type === "text" && typeof candidate.text === "string";
 }
 
+function hasToolCall(entry: SessionEntry): boolean {
+  const content = entry.message?.content;
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  return content.some(
+    (block) => typeof block === "object" && block !== null && (block as { type?: unknown }).type === "toolCall",
+  );
+}
+
 function textOf(entry: SessionEntry): string | null {
   const content = entry.message?.content;
   if (!Array.isArray(content)) {
@@ -32,12 +47,12 @@ function textOf(entry: SessionEntry): string | null {
   return text === "" ? null : text;
 }
 
-export const readLastAssistantText: SessionReader = (path) => {
+export const readLastAssistant: SessionReader = (path) => {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return null;
+    return { text: null, pendingToolCall: false };
   }
 
   const lines = raw.split("\n");
@@ -59,7 +74,7 @@ export const readLastAssistantText: SessionReader = (path) => {
     if (entry.type !== "message" || entry.message?.role !== "assistant") {
       continue;
     }
-    return textOf(entry);
+    return { text: textOf(entry), pendingToolCall: hasToolCall(entry) };
   }
-  return null;
+  return { text: null, pendingToolCall: false };
 };

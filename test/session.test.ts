@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { readLastAssistantText } from "../src/session/index.ts";
+import { readLastAssistant } from "../src/session/index.ts";
 
 const tempDirs = new Set<string>();
 
@@ -19,7 +19,7 @@ function message(role: string, content: unknown[]): string {
 interface SessionCase {
   name: string;
   lines?: string[];
-  expected: string | null;
+  expected: { text: string | null; pendingToolCall: boolean };
 }
 
 const cases: SessionCase[] = [
@@ -29,7 +29,7 @@ const cases: SessionCase[] = [
       message("assistant", [{ type: "text", text: "first" }]),
       message("assistant", [{ type: "text", text: "second" }]),
     ],
-    expected: "second",
+    expected: { text: "second", pendingToolCall: false },
   },
   {
     name: "joins multiple text blocks with newlines",
@@ -40,12 +40,12 @@ const cases: SessionCase[] = [
         { type: "text", text: "Second block." },
       ]),
     ],
-    expected: "First block.\nSecond block.",
+    expected: { text: "First block.\nSecond block.", pendingToolCall: false },
   },
   {
     name: "skips malformed lines",
     lines: [message("assistant", [{ type: "text", text: "kept" }]), "{not json"],
-    expected: "kept",
+    expected: { text: "kept", pendingToolCall: false },
   },
   {
     name: "returns null when the last assistant has no text",
@@ -53,11 +53,27 @@ const cases: SessionCase[] = [
       message("assistant", [{ type: "text", text: "earlier" }]),
       message("assistant", [{ type: "thinking", thinking: "only thinking" }]),
     ],
-    expected: null,
+    expected: { text: null, pendingToolCall: false },
   },
   {
     name: "returns null when the file is missing",
-    expected: null,
+    expected: { text: null, pendingToolCall: false },
+  },
+  {
+    name: "marks a trailing tool call as pending",
+    lines: [
+      message("assistant", [
+        { type: "text", text: "Need a decision." },
+        { type: "thinking", thinking: "waiting" },
+        { type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} },
+      ]),
+    ],
+    expected: { text: "Need a decision.", pendingToolCall: true },
+  },
+  {
+    name: "marks a tool-only assistant message as pending",
+    lines: [message("assistant", [{ type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} }])],
+    expected: { text: null, pendingToolCall: true },
   },
 ];
 
@@ -74,5 +90,5 @@ it.each(cases)("$name", ({ lines, expected }) => {
     writeFileSync(file, `${lines.join("\n")}\n`);
   }
 
-  expect(readLastAssistantText(file)).toBe(expected);
+  expect(readLastAssistant(file)).toEqual(expected);
 });

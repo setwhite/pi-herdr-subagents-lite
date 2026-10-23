@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createExtension, type ExtensionRegistrar, type SubagentTool } from "../src/extension/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
-import { readLastAssistantText } from "../src/session/index.ts";
+import { readLastAssistant } from "../src/session/index.ts";
 import type { RunStarted } from "../src/subagent/index.ts";
 
 interface SentMessage {
@@ -109,7 +109,7 @@ function fakeHost(
 
 function loadSession(host: HerdrHost, events: string[] = []) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
-  createExtension({ host, readLastAssistantText })(pi);
+  createExtension({ host, readLastAssistant })(pi);
   startSession();
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
@@ -154,6 +154,19 @@ function assistantLine(text: string): string {
   return JSON.stringify({
     type: "message",
     message: { role: "assistant", content: [{ type: "text", text }] },
+  });
+}
+
+function pendingAskLine(): string {
+  return JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Need a decision." },
+        { type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} },
+      ],
+    },
   });
 }
 
@@ -571,6 +584,27 @@ it("resets poll failure count on success", async () => {
   expect(sent).toHaveLength(1);
   expect(content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(content).not.toContain("unknown");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+});
+
+it("waits while the worker is blocked in a tool call", async () => {
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "done", completionSeq: 1 }));
+
+  const started = parseStarted(await runTask(tool, "ask the human"));
+  tempDirs.add(dirname(started.sessionFile));
+  writeFileSync(started.sessionFile, `${pendingAskLine()}\n`);
+
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(sent).toHaveLength(0);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+
+  writeFileSync(started.sessionFile, `${assistantLine("answered")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const content = sent[0]?.message.content ?? "";
+  expect(sent).toHaveLength(1);
+  expect(content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(content).toContain("answered");
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
 });
 

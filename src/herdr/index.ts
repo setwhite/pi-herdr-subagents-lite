@@ -68,6 +68,14 @@ interface PaneInfo {
   tab_id: string;
 }
 
+const HOST_ERROR_CODES: Record<string, string> = {
+  agent_name_taken: "name_taken",
+};
+
+function hostError(code: string, message: string): HerdrHostError {
+  return new HerdrHostError(HOST_ERROR_CODES[code] ?? code, message);
+}
+
 function parseHerdrError(text: string): HerdrErrorBody | null {
   if (!text.trim()) {
     return null;
@@ -94,7 +102,7 @@ function runHerdr(args: string[]): Promise<string> {
         const parsed = parseHerdrError(stderr) ?? parseHerdrError(stdout);
         reject(
           parsed
-            ? new HerdrHostError(parsed.code ?? "herdr_failed", parsed.message ?? parsed.code ?? "herdr failed")
+            ? hostError(parsed.code ?? "herdr_failed", parsed.message ?? parsed.code ?? "herdr failed")
             : new HerdrHostError("herdr_failed", error.message),
         );
       },
@@ -111,7 +119,7 @@ async function execHerdrJson<T>(args: string[]): Promise<T> {
     throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")} returned invalid JSON`);
   }
   if (parsed.error?.code) {
-    throw new HerdrHostError(parsed.error.code, parsed.error.message ?? parsed.error.code);
+    throw hostError(parsed.error.code, parsed.error.message ?? parsed.error.code);
   }
   if (parsed.result === undefined) {
     throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")} returned no result`);

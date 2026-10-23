@@ -66,7 +66,7 @@ export interface SubagentService {
 
 export interface SubagentServiceDeps {
   host: HerdrHost;
-  readLastAssistantText: SessionReader;
+  readLastAssistant: SessionReader;
 }
 
 interface ActiveRun {
@@ -102,7 +102,7 @@ function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
   return new ToolError("spawn_failed", `${detail}${created}${trust}`);
 }
 
-export function createSubagentService({ host, readLastAssistantText }: SubagentServiceDeps): SubagentService {
+export function createSubagentService({ host, readLastAssistant }: SubagentServiceDeps): SubagentService {
   const runs: ActiveRun[] = [];
   const runRoot = join(tmpdir(), "pi-herdr-subagents-lite", `${Date.now()}-${randomUUID()}`);
   let nextWorkerNumber = 1;
@@ -210,12 +210,16 @@ export function createSubagentService({ host, readLastAssistantText }: SubagentS
       return;
     }
 
-    const text = readLastAssistantText(run.sessionFile);
-    if (text !== null) {
+    const snapshot = readLastAssistant(run.sessionFile);
+    if (snapshot.pendingToolCall) {
+      schedulePoll(run);
+      return;
+    }
+    if (snapshot.text !== null) {
       await finish(run, {
         state: "done",
         name: run.name,
-        text: resultText(text, run.sessionFile),
+        text: resultText(snapshot.text, run.sessionFile),
         sessionFile: run.sessionFile,
         paneId: run.paneId,
       });

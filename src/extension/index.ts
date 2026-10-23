@@ -12,7 +12,7 @@ import {
 
 export interface ExtensionDeps {
   host: HerdrHost;
-  readLastAssistantText: SessionReader;
+  readLastAssistant: SessionReader;
 }
 
 const parameters = Type.Object(
@@ -85,7 +85,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       service?.shutdown();
       service = createSubagentService({
         host: deps.host,
-        readLastAssistantText: deps.readLastAssistantText,
+        readLastAssistant: deps.readLastAssistant,
       });
       service.onResult(deliver);
       return service;
