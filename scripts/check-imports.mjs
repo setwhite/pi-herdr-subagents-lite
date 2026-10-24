@@ -1,6 +1,6 @@
 /**
  * docs/ARCHITECTURE.md §2 的可执行版本：依赖方向边表 + 单一出口。
- * 规则改了先改 ARCHITECTURE.md，再改这里的 EDGES / SINGLE_IMPORT，两边不一致 CI 会红。
+ * 规则改了先改 ARCHITECTURE.md，再改这里的 EDGES / SINGLE_IMPORT；本脚本只校验源码，不比对文档。
  */
 
 import { readdirSync, readFileSync } from "node:fs";

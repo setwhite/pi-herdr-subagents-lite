@@ -250,6 +250,7 @@ export function createSubagentService({ host, readLastAssistant }: SubagentServi
         pollFailures: 0,
         finished: false,
       };
+      // Reserve the slot before the first await: concurrent run() calls must see it.
       runs.push(run);
 
       try {

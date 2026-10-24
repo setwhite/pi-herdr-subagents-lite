@@ -1,12 +1,12 @@
 # M0：最小可运行子代理闭环（归档）
 
-> 2026-10-23 完成。本文是 M0 验收快照，不再更新。当前 v1 契约见 [CONTRACT](../../CONTRACT.md)，决策见 [DECISIONS](../../DECISIONS.md)，任务/审计见 [README.md](README.md)。
+> 2026-10-23 完成。本文是 M0 验收快照，不再更新。当前 v1 契约见 [v1 契约](../../specs/0001-v1-contract.md)，决策见 [决策](../../decisions/README.md)，任务/审计见 [README.md](README.md)。
 
 ## 问题
 
 父模型需要把一项独立工作交给另一个 pi 进程，自己继续当前回合；子进程要在可见的 herdr pane 里运行，人能看、能接管、能回答它自己的提问；完成后结果回到父会话，而不是让父模型轮询或阻塞。
 
-v1 的 profile、send、blocked、恢复、配置、聚合和 artifact 见 [DECISIONS](../../DECISIONS.md) 与 [CONTRACT](../../CONTRACT.md)。M0 只验证「herdr 起 pi、任务投递、结果回投」。
+v1 的 profile、send、blocked、恢复、配置、聚合和 artifact 见 [决策](../../decisions/README.md) 与 [v1 契约](../../specs/0001-v1-contract.md)。M0 只验证「herdr 起 pi、任务投递、结果回投」。
 
 ## 范围
 
@@ -174,7 +174,7 @@ final answer. Finish with a concise summary: what you did, where, and any open q
 
 M0 是最小 package，不是单文件：ESM、private、包名 `pi-herdr-subagents-lite`，`pi.extensions` 指向 `src/index.ts`。package 根就是仓库工作目录；`src/` 放模块，`test/` 放 vitest；pi 用 jiti 直接加载 TypeScript，不需要构建；用 `pi -e` 加载，不做全局安装。
 
-脚本：typecheck 用 tsc --noEmit；lint 用 biome check；test 用 vitest run；check 依次跑 typecheck、lint、test。devDependencies 包含 typescript、@biomejs/biome、vitest、@types/node；`@earendil-works/pi-coding-agent` 作为 peer 和 dev 依赖。只用 pnpm。
+脚本：typecheck 用 tsc --noEmit；lint 用 biome check；check:imports 用 node scripts/check-imports.mjs；test 用 vitest run；check 依次跑 lint、check:imports、typecheck、test。devDependencies 包含 typescript、@biomejs/biome、vitest、@types/node；`@earendil-works/pi-coding-agent` 作为 peer 和 dev 依赖。只用 pnpm。
 
 M0 没有配置文件。常量：maxConcurrent 4、pollIntervalMs 1000、readRetries 3、readRetryDelayMs 200、pollFailureLimit 3、maxResultChars 16384、closeOnDone true。
 
@@ -190,13 +190,13 @@ M0 没有配置文件。常量：maxConcurrent 4、pollIntervalMs 1000、readRet
 
 手工 E2E：隔离的 `PI_CODING_AGENT_DIR`（复制 auth，不打印、不提交，测后删除；最小 settings，不加载旧包）+ 命名 herdr session；用 `pi -e` 直接加载 `src/index.ts`；跑正常只读任务并确认 tab、结果、关 tab；验证第 5 个并发、杀掉子进程的 unknown、父 /new 不认领、子 pane 反问不转发；最后删除测试 session 和临时目录。
 
-QA：`pnpm typecheck`、`pnpm lint`、`pnpm test`；收工跑 `pnpm check`。
+QA：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；收工跑 `pnpm check`。
 
 ## 非功能
 
 | 项 | 预算 |
 |---|---|
-| run 返回 | 热 herdr 下 P95 ≤ 10s；agent start 硬超时 35s |
+| run 返回 | 热 herdr 下 P95 ≤ 10s；agent start 硬超时 30s（`--timeout 30000`） |
 | 结果投递 | worker 完成后 P95 ≤ 2s（1s 轮询） |
 | 并发 | 4 个 worker；最多 4 个每秒轮询 |
 | 结果 | 16384 字符；超出截断 |

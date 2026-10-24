@@ -1,7 +1,7 @@
 
 # 参考实现
 
-调研日期 2026-10-22；本地 pi 1.4.0、herdr 0.9.5。本文只记外部实现的可借鉴机制和要避开的做法；当前契约见 [CONTRACT](../CONTRACT.md)，决策见 [DECISIONS](../DECISIONS.md)。
+调研日期 2026-10-22；本地 pi 1.4.0、herdr 0.9.5。本文只记外部实现的可借鉴机制和要避开的做法；当前契约见 [v1 契约](../specs/0001-v1-contract.md)，决策见 [决策](../decisions/README.md)。
 
 ## 结论
 
@@ -26,7 +26,7 @@
 ### 能力边界
 
 - 子代理不能再派子代理：spawn 时 `extensions: { remove: [SubagentTools] }`（23:196-200）。
-- steer vs follow-up 由投递参数决定：`whenBusy: "steer" | "followUp"`（23:96-99）。
+- steer vs follow-up 由投递参数决定：`whenBusy: "steer" | "followUp"`（23:88-90）。
 - name → conversation 映射存在 conversation 级 document，`fork: "initial"`（23:45-58）。
 - 每个 reporter 的答案只上报一次：`Subagents.reported` 记录已上报的 EntryId（23:102-120）。
 - durable 跑不进 pi CLI 扩展：packages/coding-agent/src 没有 durable 引用；本地 pi 包不含 @earendil-works/pi-durable；ExtensionContext.modelRegistry 是 coding-agent 的 ModelRegistry（core/extensions/types.ts:337），不是 Harness.open 需要的 pi-ai Models。
@@ -83,7 +83,7 @@
 
 采用：
 
-- profile 的字段形状和 frontmatter 解析；当前字段契约见 [CONTRACT](../CONTRACT.md) 第 2 节。
+- profile 的字段形状和 frontmatter 解析；当前字段契约见 [v1 契约](../specs/0001-v1-contract.md) 第 2 节。
 - 后续消息用文件 inbox + 原子 rename + 轮询（D26）。
 - 子 session 最后一条 assistant 文本作为结果（D36）。
 - durable 的 requestId 幂等、所有权与「只上报一次」思路；当前用 `(name, completion_seq)` 和每 run 单次投递实现（D36）。

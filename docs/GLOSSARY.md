@@ -7,7 +7,7 @@
 | **pi-durable** | 可嵌入的 durable harness；子代理是同进程子 conversation | 没接进 pi CLI |
 | **常驻子进程** | `pi --session <file>`，可续聊、反问、steer | 不是一次性 `-p --no-session` |
 | **profile** | 角色模板；全局 `~/.pi/agent/agents/*.md` + 项目 `.pi/agents/*.md`；文件名是 profile 名 | 不是 agent name |
-| **子代理名** | `<profile>-<n>`，herdr live agent name；run 返回，send 用它 | 不是 tab 文案或 pane 标题 |
+| **子代理名** | `<profile>-<n>`，herdr live agent name；run 返回，send 用它 | 不是 profile 名，也不是 pane 标题 |
 | **tab label** | tab 栏文字；v1 等于子代理名 | 不是 agent name 字段 |
 | **pane label** | pane 头文字；v1 是任务第一行 | 不是 tab label |
 | **completion_seq** | herdr 记录的完成序号；结果的幂等键 | 不是消息 id，也不代表已读 |

@@ -1,6 +1,6 @@
 # herdr 恢复与状态实测
 
-研究记录；当前契约见 [CONTRACT](../CONTRACT.md)，决策见 [DECISIONS](../DECISIONS.md)，M0 快照见 [archive/m0](../archive/m0/README.md)。
+研究记录；当前契约见 [v1 契约](../specs/0001-v1-contract.md)，决策见 [决策](../decisions/README.md)，M0 快照见 [archive/m0](../archive/m0/README.md)。
 
 日期 2026-10-23。环境：herdr 0.9.5（Windows，protocol 22），pi 1.4.0。测试在隔离的 named session 里跑（`herdr --session u16test server` / `u16b`），未触碰 default session；测试后 `herdr session delete`。
 
@@ -65,7 +65,7 @@ herdr --session u16test agent explain tester --json
 
 `~/.pi/agent/extensions/herdr-agent-state.ts:211` 监听 `herdr:blocked`；`rg 'herdr:blocked' ~/.pi/agent/npm/node_modules ~/.pi/agent/extensions` 只命中这一处监听，没有 emit 方。
 
-本项目的 `bridge` 实测：`ui_prompt_start/end` → `herdr:blocked` 后，ask 弹窗期间 `agent get` 为 `blocked`，`agent prompt` 返回 `agent_blocked`；Esc 后恢复 `idle`。见 [DECISIONS](../DECISIONS.md) D40。
+本项目的 `bridge` 实测：`ui_prompt_start/end` → `herdr:blocked` 后，ask 弹窗期间 `agent get` 为 `blocked`，`agent prompt` 返回 `agent_blocked`；Esc 后恢复 `idle`。见 [D40](../decisions/D40-bridge.md)。
 
 ### 测试 4：恢复后的悬空工具调用
 
@@ -77,6 +77,4 @@ herdr --session u16test agent explain tester --json
 
 ## 未决
 
-- M0：completion_seq 首轮时序、tab close 参数与失败形态；见 [M0 spec](../archive/m0/spec.md)。
-- v1 已定：`send` 到 blocked 排队；artifact v1 不清理。
-- v1 待验证：done 时 session 是否已落盘；server 重启时 pending ask 是否重绘。见 [DECISIONS](../DECISIONS.md) 的 V4/V7。
+未决项见 [决策](../decisions/README.md) 的「边界与验证」与 [M0 spec](../archive/m0/spec.md)。

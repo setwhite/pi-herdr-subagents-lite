@@ -1,7 +1,7 @@
 
 # v1 契约
 
-v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前代码是 M0，记录见 [archive/m0](archive/m0/README.md)。决策理由见 [DECISIONS](DECISIONS.md)，提示词与简报模板见 [PROMPTS](PROMPTS.md)。
+v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前代码是 M0，记录见 [archive/m0](../archive/m0/README.md)。决策理由见 [决策](../decisions/README.md)，提示词与简报模板见 [PROMPTS](../PROMPTS.md)。
 
 一句话：一个工具，两个 action（`run` / `send`）；结果异步；子代理跑在 herdr pane；fresh only。
 
@@ -47,7 +47,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `closeOnDone` | boolean | — | false = keep，完成后不 release、不关 pane |
 | `closeDelayMs` | integer | 0–60000，clamp | closeOnDone 时关闭前等待 |
 | `inboxPollMs` | integer | 50–5000，clamp | 子侧 inbox 轮询间隔 |
-| `prompts` | object | — | 提示词覆盖，见 [PROMPTS](PROMPTS.md) |
+| `prompts` | object | — | 提示词覆盖，见 [PROMPTS](../PROMPTS.md) |
 | `bridge` | object | — | 见第 7 节 |
 
 固定文件与命令：
@@ -76,7 +76,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `tools` | string | pi 默认 | 纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 空 | 逗号分隔或 YAML 列表；每项解析为 `<agent-dir>/skills/<name>`，用 `--skill` 传入 |
 | `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动 |
-| `system-prompt` | string | 省略 | append / replace / 省略，见 [PROMPTS](PROMPTS.md) |
+| `system-prompt` | string | 省略 | append / replace / 省略，见 [PROMPTS](../PROMPTS.md) |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
 
 - `ask_user_question` 不自动加入；想反问就写进 `tools`。
@@ -92,7 +92,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 |---|---|
 | name | `config.toolName`，默认 `subagent` |
 | label | `Subagent` |
-| description / snippet / guidelines | 见 [PROMPTS](PROMPTS.md)；profile 列表在注册时展开 |
+| description / snippet / guidelines | 见 [PROMPTS](../PROMPTS.md)；profile 列表在注册时展开 |
 
 参数：
 

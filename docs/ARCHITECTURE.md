@@ -3,7 +3,7 @@
 
 当前代码是 M0：最小 package，package 根就是仓库工作目录，`src/` 放模块、`test/` 放测试、`docs/` 放文档。只做 herdr，按功能分模块，不按 controller/service/adapter 分层。
 
-v1 目标与当前代码的差异见 [CONTRACT](CONTRACT.md) 与 [DECISIONS](DECISIONS.md)；M0 的 spec、任务、审计与 E2E 记录见 [archive/m0](archive/m0/README.md)。本文只写模块边界、依赖方向、测试 seam 和文档规则；内部 API 以代码与类型为准。
+v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 [决策](decisions/README.md)；M0 的 spec、任务、审计与 E2E 记录见 [archive/m0](archive/m0/README.md)。本文只写模块边界、依赖方向、测试 seam 和文档规则；内部 API 以代码与类型为准。
 
 入口只装配真实依赖，不持有运行态；SubagentService 由 extension 在 `session_start` 创建。
 
@@ -45,7 +45,7 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 - extension 增加 `send`；subagent 增加 profile、配置、`<profile>-<n>`、inbox；新增 bridge 入口。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
-- 当前 M0 的 `worker-N`、4 槽、1s 轮询、无配置是历史行为；v1 以 [CONTRACT](CONTRACT.md) 为准。
+- 当前 M0 的 `worker-N`、4 槽、1s 轮询、无配置是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
 
 ## 2. 依赖方向
 
@@ -64,12 +64,12 @@ subagent -> session
 - subagent 不 import pi；extension 不 import 真实 CLI 或 fs；只有 index 同时认识真实适配器与 pi。
 - 宿主包 `@earendil-works/pi-coding-agent` 只以 type-only 出现在 `src/index.ts` 与 `src/extension/index.ts`；`typebox` 只在 extension。
 - bridge 是 v1 第二个入口 `src/bridge/index.ts`：只依赖 pi 类型，监听 `ui_prompt_*`，不 import 其他模块。
-- 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`，两边不一致 CI 会红。
+- 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`；脚本只校验源码，不比对本文。
 
 ## 3. 目录与测试约定
 
 - 模块以目录为单位：单文件模块用 `<name>/index.ts`；共享类型放拥有它的模块，跨模块只走模块入口。不建 utils/common/helpers/ports 层。
-- 模块说明写在本文，不单列模块文档；改接口或语义时同步本文与 [CONTRACT](CONTRACT.md)。术语见 [GLOSSARY](GLOSSARY.md)。
+- 模块说明写在本文，不单列模块文档；改接口或语义时同步本文与 [v1 契约](specs/0001-v1-contract.md)。术语见 [GLOSSARY](GLOSSARY.md)。
 - 入口 `src/index.ts` 只做 composition root + 默认导出；extension 是唯一注册工具、使用 pi 生命周期的模块。
 - 结果内容与截断属于 subagent；消息信封（customType、display、triggerTurn、头部）属于 extension。错误在 herdr 映射为 host 错误，在 subagent 映射为 ToolError，extension 只渲染。
 - 测试统一放 `test/`。M0 只有一条 mock seam，按 seam 平铺：`extension.test.ts`（工具契约 + run 生命周期）、`session.test.ts`（纯函数表驱动）、`index.test.ts`（入口导出）。真实 herdr CLI 不进自动化测试，只做手工 E2E；等有可跑的自动化真实链路再加 `test/e2e/`。
@@ -93,10 +93,10 @@ bridge 的真实渲染另做手工 E2E。
 
 | 文件 | 只写 | 不写 |
 |---|---|---|
-| `README.md` | 安装、开发、文档索引 | 模块签名、选型理由 |
+| `README.md` | 安装、用法、开发、文档索引 | 模块签名、选型理由 |
 | `docs/ARCHITECTURE.md` | 模块边界、依赖方向、测试 seam、文档规则 | 字段表、决策理由 |
-| `docs/DECISIONS.md` | 决策编号、理由、取消项、边界与验证 | 字段表、配置/命令行 |
-| `docs/CONTRACT.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
+| `docs/decisions/*.md` | 决策编号、理由、取消项、边界与验证；一条一份 | 字段表、配置/命令行 |
+| `docs/specs/*.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
 | `docs/PROMPTS.md` | 工具文案、任务简报、子代理 system prompt | 配置语义、结果协议 |
 | `docs/GLOSSARY.md` | 本扩展特有术语的唯一命名来源 | 实现细节 |
 | `docs/e2e/herdr.md` | 当前手工 E2E runbook | 契约与理由 |

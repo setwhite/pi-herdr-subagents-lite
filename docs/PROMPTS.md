@@ -1,7 +1,7 @@
 
 # 提示词与简报
 
-工具文案、任务简报和子代理侧提示词的默认值。配置键见 [CONTRACT](CONTRACT.md) 第 1 节；结果消息格式见 [CONTRACT](CONTRACT.md) 第 6 节。
+工具文案、任务简报和子代理侧提示词的默认值。本文是 v1 目标，不是当前代码；当前 M0 的文案与简报见 [M0 spec](archive/m0/spec.md)。配置键见 [v1 契约](specs/0001-v1-contract.md) 第 1 节；结果消息格式见第 6 节。
 
 ## 1. 工具文案
 

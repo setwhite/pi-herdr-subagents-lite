@@ -1,6 +1,6 @@
 # M0 E2E 记录（归档）
 
-> 历史记录，不再更新。命令里的 pnpm build / dist/index.js 已失效；当前 runbook 见 [e2e/herdr.md](../../e2e/herdr.md)。
+> 历史记录，不再更新。当前 runbook 见 [e2e/herdr.md](../../e2e/herdr.md)。
 
 ## T07 正常路径
 
@@ -9,7 +9,7 @@
 
 ~~~powershell
 $T07ROOT = "C:\Users\CHARLE~1\AppData\Local\Temp\t07e2e.E7X4UT"
-pi --no-extensions -e dist/index.js --no-skills --no-prompt-templates --no-context-files --no-mcp --tools subagent --session "$T07ROOT\agent\parent.jsonl"
+pi --no-extensions -e src/index.ts --no-skills --no-prompt-templates --no-context-files --no-mcp --tools subagent --session "$T07ROOT\agent\parent.jsonl"
 ~~~
 
 正常路径（AC2）：在父 pane 发送只读任务；工具返回
@@ -51,7 +51,7 @@ First markdown heading: # pi-herdr-subagents-lite
 
 ### 复跑
 
-在 git-bash 的仓库根执行；先 `pnpm build`。以下 setup 必须在启动 server 前 export `PI_CODING_AGENT_DIR`：
+在 git-bash 的仓库根执行。以下 setup 必须在启动 server 前 export `PI_CODING_AGENT_DIR`：
 
 ~~~bash
 herdr --session t08probe server stop >/dev/null 2>&1 || true
@@ -72,7 +72,7 @@ sleep 2
 PANE_ID=$(herdr --session t08probe workspace create --label t08ws --cwd "$PWD" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).result.root_pane.pane_id))')
 test -n "$PANE_ID"
-ENTRY=$(cygpath -m "$PWD/dist/index.js")
+ENTRY=$(cygpath -m "$PWD/src/index.ts")
 ~~~
 
 父 pi 的 agent 名与 session 文件（每个场景一个；从第二个场景起先 `herdr --session t08probe tab create --workspace w1 --cwd "$PWD" --no-focus`，用同样方式取新的 `$PANE_ID`）：

@@ -1,7 +1,7 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码是 M0：只支持 `run`、固定 worker、异步结果；v1 的 profile、send、bridge、恢复与 npm 发布是目标，契约见 [CONTRACT](docs/CONTRACT.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码是 M0：只支持 `run`、固定 worker、异步结果；v1 的 profile、send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
@@ -11,13 +11,23 @@
 pi install npm:pi-herdr-subagents-lite
 ~~~
 
-全局安装同时加载 orchestrator 与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
+全局安装同时加载 `subagent` 工具扩展与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
 
 开发时直接加载源码：
 
 ~~~bash
 pi -e ./src/index.ts
 ~~~
+
+## 用法
+
+在 herdr pane 里启动 pi 后，调 `subagent` 的 `run`：
+
+~~~json
+{"action":"run","task":"Read README.md and answer with its first heading."}
+~~~
+
+返回 `{"state":"running","name":"worker-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent worker-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
 
 ## 开发
 
@@ -32,9 +42,9 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 ## 文档
 
 - [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块说明。
-- [CONTRACT](docs/CONTRACT.md) — v1 配置、profile、工具、send、结果、bridge。
+- [v1 契约](docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
 - [PROMPTS](docs/PROMPTS.md) — 工具文案、任务简报、子代理提示词。
-- [DECISIONS](docs/DECISIONS.md) — 决策与理由、取消项、边界与验证。
+- [决策](docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
 - [GLOSSARY](docs/GLOSSARY.md) — 术语。
 - [herdr E2E](docs/e2e/herdr.md) — 当前 M0 的手工回归 runbook。
 - [M0 归档](docs/archive/m0/README.md) — spec、任务/审计、E2E 记录。
