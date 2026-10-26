@@ -11,3 +11,6 @@
 - 同步交付、wait / list / status / cancel / answer
 - headless 后端、RPC 转发
 - 自建 registry、sidecar 状态机、父 pane widget
+- 项目级配置
+- 子代理重启（同 pane 同名续聊、`tail_dirty`）
+- 双向 `message` 工具（模型主动 pull、子代理之间互通）

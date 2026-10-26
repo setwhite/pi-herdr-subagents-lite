@@ -11,7 +11,7 @@
 pi install npm:pi-herdr-subagents-lite
 ~~~
 
-全局安装同时加载 `subagent` 工具扩展与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
+全局安装加载一个扩展，同时提供 `subagent` 工具与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
 
 开发时直接加载源码：
 

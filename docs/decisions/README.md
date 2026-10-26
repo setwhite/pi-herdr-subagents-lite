@@ -22,16 +22,21 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D22](D22-tab-placement.md) | 新 tab 或新 workspace |
 | [D23](D23-start-then-prompt.md) | 先等 idle，再投 brief |
-| [D28](D28-close-on-done.md) | 完成即 release 并关 tab |
-| [D32](D32-death-detection.md) | died 判定以 herdr 事件为主 |
+| [D28](D28-close-on-done.md) | 完成关闭与父会话清理 |
+| [D47](D47-close-on-done-default-keep.md) | 完成默认保留 tab |
+| [D48](D48-close-children-on.md) | 父会话结束按 closeChildrenOn 清理 |
+| [D32](D32-death-detection.md) | died 判定以 agent list 消失为准 |
+| [D53](D53-session-dir.md) | 子 session 放在 agent dir |
 
 ## 任务与上下文
 
 | # | 决策 |
 |---|---|
 | [D9](D9-brief-file.md) | 任务简报写文件，用 `@brief` 投递 |
-| [D10](D10-cwd-from-profile.md) | 子代理 cwd 由 profile 指定 |
+| [D10](D10-cwd-from-profile.md) | 子代理 cwd 默认继承父 |
 | [D13](D13-fresh-only.md) | v1 只支持 fresh |
+| [D50](D50-skills.md) | skills 三态 |
+| [D51](D51-system-prompt.md) | system-prompt 三模式 |
 
 ## 结果与恢复
 
@@ -41,6 +46,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | [D30](D30-async-only.md) | 只做异步交付 |
 | [D31](D31-crash-recovery.md) | 子代理崩溃默认 notify |
 | [D36](D36-result-pipeline.md) | 结果投递路径 |
+| [D52](D52-completion-snapshot.md) | 完成检测用 agent list 快照 |
 
 ## 身份与展示
 
@@ -57,15 +63,17 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D24](D24-state-source.md) | 状态只读 herdr |
 | [D25](D25-native-alerts.md) | 提醒走原生 |
-| [D29b](D29b-event-subscription.md) | 父侧事件订阅只服务投递 |
+| [D29b](D29b-event-subscription.md) | 父侧事件订阅只服务投递（v1 不订阅） |
 | [D19](D19-ask-in-pane.md) | 反问留在子 pane |
 | [D40](D40-bridge.md) | bridge 上报 blocked |
+| [D49](D49-merge-bridge.md) | bridge 并入主扩展 |
 
 ## 投递与写冲突
 
 | # | 决策 |
 |---|---|
 | [D26](D26-file-inbox.md) | send 走文件 inbox |
+| [D54](D54-question-via-pane-scan.md) | 子代理提问靠父侧扫 pane |
 | [D27](D27-no-write-limits.md) | 不做运行时写限制 |
 
 ## 工具与配置
@@ -77,13 +85,13 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | [D37](D37-config-layers.md) | 配置全局 + 项目 |
 | [D42](D42-profile-layers.md) | profile 全局 + 项目 |
 | [D45](D45-tool-name.md) | 默认工具名 subagent，重名不处理 |
-| [D46](D46-no-role-detection.md) | 不做父子角色检测 |
+| [D46](D46-no-role-detection.md) | 角色只看 inbox 目录 |
 
 ## 边界与验证
 
 | # | 问题 |
 |---|---|
 | [V2](V2-send-blocked.md) | `send` 到 blocked 子代理 |
-| [V4](V4-session-flush.md) | 状态事件到达 done 时子 session 是否已落盘 |
+| [V4](V4-session-flush.md) | agent list 报告 done 时子 session 是否已落盘 |
 | [V6](V6-artifact-cleanup.md) | 结果 artifact 清理 |
 | [V7](V7-pending-ask.md) | herdr server 重启时 pending ask 对话框是否重绘 |

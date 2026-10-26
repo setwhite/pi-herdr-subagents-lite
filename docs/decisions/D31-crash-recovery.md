@@ -1,5 +1,5 @@
-# D31 子代理崩溃默认 notify
+# D31 死亡不重启，send 可续聊
 
-子代理崩溃默认 notify；`onAgentExit: restart` 只在尾部没有未完成 toolCall 时同 pane 同名重启一次；`send` 需要重启时同样检查，否则 `tail_dirty`。herdr server 重启用 session 路径恢复；全局安装后不依赖 `-e`。
+子代理死亡不自动重启；死亡原因读 `<childSession>.exit`（`done` / `error` / `quit`），没有该文件再读 session 尾部。`send` 到已退出的子代理时用同一 session 重启续聊：尾部有未完成 toolCall 返回 `tail_dirty`，session 缺失返回 `session_missing`；重启重新读 profile，不用快照。herdr server 重启不处理。全局安装后不依赖 `-e`。
 
-依据：实测：`-e` 丢失；悬空 toolCall 会变成 No result provided，模型可能重试副作用。
+依据：用户选择；重启只在显式 `send` 时发生，避免死亡后自动重跑副作用；重读 profile 省掉 loadout 文件。实测 `-e` 在 server 重启后丢失，悬空 toolCall 会变成 No result provided。

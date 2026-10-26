@@ -1,5 +1,5 @@
 # D36 结果投递路径
 
-结果路径：herdr 状态事件 → `completion_seq` → 读子 session 尾部 → 按 `(name, completion_seq)` 去重 → 500ms 聚合 → 回投父会话。超过 16384 字符写 artifact，消息只带头部与路径；读不到重试 3 次，仍失败保留 pane 并通知。
+结果路径：每 1s `agent list` 快照 → `completion_seq` 大于该 run 的 `lastHandledSeq` 且状态为 `idle` / `done` → 读子 session 尾部 → 500ms 聚合 → 回投父会话并更新 `lastHandledSeq`。超过 16384 字符写 artifact，消息只带头部与路径；读不到重试 3 次，仍失败保留 pane 并通知。
 
-依据：用 herdr 原生事件与 `completion_seq` 做幂等。
+依据：一次快照覆盖所有 run；`completion_seq` 与谁看过无关；不重启就没有同名复用，单一游标够用。

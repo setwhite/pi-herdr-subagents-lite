@@ -11,12 +11,13 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
-| extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；herdr/session 端口（type-only）；pi 类型 |
+| extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config 类型、herdr/session 端口（type-only）；pi 类型 |
 | subagent | run 生命周期、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
+| config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
 
-入口不是第五个模块：只构造真实 host/session 并导出扩展。
+入口不是第五个模块：只构造真实 host/session、注入 `loadConfig` 并导出扩展。
 
 ### extension
 
@@ -28,11 +29,11 @@ pi 适配层：注册工具、检查 `HERDR_ENV`、挂 `session_start` / `sessio
 
 run 生命周期内核。对外只有 SubagentService：`run`、`onResult`、`shutdown`、`active`。
 
-M0 负责 4 个槽、`worker-N`、run root/brief、串行轮询、`completion_seq`、结果读取重试、超过 16384 字符截断、done/unknown。最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；run root 是临时目录，不承担恢复。
+M0 负责槽位、`worker-N`、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
 
 ### herdr
 
-HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。
+HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）与 `resumeAgent`（同一 session 重启续聊）。
 
 CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
 
@@ -40,30 +41,39 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 
 `readLastAssistant(path)`：读 child session JSONL，返回最后一条 assistant 消息的 `{ text, pendingToolCall }`。text 是 text block 拼接并 trim；pendingToolCall 表示该消息仍带 toolCall。文件不存在、坏行、没有文本时 text 为 null；不重试、不 sleep、不写文件。重试和路径策略在 subagent。
 
+### config
+
+`loadConfig()` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。extension 只用 `maxConcurrent` 与 `maxResultChars` 两个数。
+
+index 注入 `loadConfig`，extension 在工厂里调用一次。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
+
 ### v1 差异
 
-- extension 增加 `send`；subagent 增加 profile、配置、`<profile>-<n>`、inbox；新增 bridge 入口。
+- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 profile、配置、`<profile>-<n>`、inbox、`<childSession>.exit` 回执与续聊。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
-- 当前 M0 的 `worker-N`、4 槽、1s 轮询、无配置是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
+- 当前 M0 的 `worker-N`、逐 run `getAgent`、1s 轮询是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
 
 ## 2. 依赖方向
 
 ~~~text
 index -> extension
+index -> config
 index -> herdr
 index -> session
 extension -> subagent
+extension ..> config   (type-only)
 extension ..> herdr    (type-only)
 extension ..> session  (type-only)
 subagent -> herdr
 subagent -> session
 ~~~
 
-- 只能沿箭头依赖，禁止反向 import；herdr、session 是叶子。
+- 只能沿箭头依赖，禁止反向 import；config、herdr、session 是叶子。
+- config 只认 Node fs/path/os，不 import pi，也不 import 其他模块；配置错误的唯一表达是一条带字段名的 Error。
 - subagent 不 import pi；extension 不 import 真实 CLI 或 fs；只有 index 同时认识真实适配器与 pi。
 - 宿主包 `@earendil-works/pi-coding-agent` 只以 type-only 出现在 `src/index.ts` 与 `src/extension/index.ts`；`typebox` 只在 extension。
-- bridge 是 v1 第二个入口 `src/bridge/index.ts`：只依赖 pi 类型，监听 `ui_prompt_*`，不 import 其他模块。
+- bridge 是 extension 内的事件监听，不单独入口；`ui_prompt_*` 监听由 extension 注册，bridge 配置也由 extension 读取，不引入 bridge 模块。
 - 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`；脚本只校验源码，不比对本文。
 
 ## 3. 目录与测试约定
@@ -72,7 +82,7 @@ subagent -> session
 - 模块说明写在本文，不单列模块文档；改接口或语义时同步本文与 [v1 契约](specs/0001-v1-contract.md)。术语见 [GLOSSARY](GLOSSARY.md)。
 - 入口 `src/index.ts` 只做 composition root + 默认导出；extension 是唯一注册工具、使用 pi 生命周期的模块。
 - 结果内容与截断属于 subagent；消息信封（customType、display、triggerTurn、头部）属于 extension。错误在 herdr 映射为 host 错误，在 subagent 映射为 ToolError，extension 只渲染。
-- 测试统一放 `test/`。M0 只有一条 mock seam，按 seam 平铺：`extension.test.ts`（工具契约 + run 生命周期）、`session.test.ts`（纯函数表驱动）、`index.test.ts`（入口导出）。真实 herdr CLI 不进自动化测试，只做手工 E2E；等有可跑的自动化真实链路再加 `test/e2e/`。
+- 测试统一放 `test/`。按 seam 平铺：`config.test.ts`（配置解析）、`extension.test.ts`（工具契约 + run 生命周期）、`session.test.ts`（纯函数表驱动）、`index.test.ts`（入口导出）。真实 herdr CLI 不进自动化测试，只做手工 E2E；等有可跑的自动化真实链路再加 `test/e2e/`。
 - 唯一 mock seam 是 pi 扩展 API + 注入 HerdrHost：fake pi、fake host、fake timers、临时 session JSONL。测试不 mock SubagentService 内部，也不 mock Node fs；真实 CLI 字段由手工 E2E 校准，不写第二个 mock。
 - 仓库级守卫是 `scripts/check-imports.mjs`（零依赖 node 脚本）；提交前闸是 `.githooks/pre-commit`（`git config core.hooksPath .githooks` 启用一次），与 CI 跑同一批命令。
 - 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
@@ -82,10 +92,11 @@ subagent -> session
 
 | seam | 用法 | 覆盖 |
 |---|---|---|
-| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL | 工具契约、run 生命周期、并发、结果消息 |
+| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、并发、结果消息 |
+| loadConfig | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验、配置错误 |
 | SessionReader | 纯函数表驱动 | JSONL 解析边界 |
 | 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/close、真实 child |
-| bridge（v1） | fake pi events | `ui_prompt_*` → `herdr:blocked` |
+| bridge（v1，extension 内） | fake pi events | `ui_prompt_*` → `herdr:blocked` |
 
 bridge 的真实渲染另做手工 E2E。
 
@@ -108,7 +119,7 @@ bridge 的真实渲染另做手工 E2E。
 
 ## 5. 约束
 
-- M0 不写自建 registry；run root/brief 是临时目录，不承担恢复。
-- M0 通过 `pi -e` 加载；v1 全局安装（npm），bridge 走第二个入口。无 marker / 角色检测；子进程也加载本包。
+- 不写自建 registry；子 session、brief、inbox 都只是文件，不承担恢复。
+- M0 通过 `pi -e` 加载；v1 全局安装（npm），bridge 是同一扩展内的监听器。无 marker / 角色检测；子进程也加载本包。
 - 任务状态只在 `docs/todos/`；M0 已完成记录移到 `docs/archive/m0/`，架构文档不写进度。
 - 内部接口以代码和类型为唯一事实来源；文档只写代码里读不出的约束、决策与事实。
