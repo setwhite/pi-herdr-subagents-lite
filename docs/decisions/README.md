@@ -1,6 +1,6 @@
 # 决策
 
-v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 `run` / `send`；结果异步回投；fresh only。当前 M0 代码见 [ARCHITECTURE](../ARCHITECTURE.md)。
+v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 `run` / `send`；结果异步回投；fresh only。当前代码见 [ARCHITECTURE](../ARCHITECTURE.md)。
 
 一条决策一份文件，文件名前缀就是 ID（`D36` → [D36-result-pipeline.md](D36-result-pipeline.md)）。v1 契约见 [v1 契约](../specs/0001-v1-contract.md)；已取消的提案见 [cancelled.md](cancelled.md)。
 
@@ -44,7 +44,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D20](D20-result-states.md) | 回投状态与聚合 |
 | [D30](D30-async-only.md) | 只做异步交付 |
-| [D31](D31-crash-recovery.md) | 子代理崩溃默认 notify |
+| [D31](D31-crash-recovery.md) | 死亡不重启，send 可续聊 |
 | [D36](D36-result-pipeline.md) | 结果投递路径 |
 | [D52](D52-completion-snapshot.md) | 完成检测用 agent list 快照 |
 
@@ -82,7 +82,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D11](D11-config-surface.md) | 可配置项 |
 | [D34](D34-single-tool.md) | 模型面只有一个工具，两个 action |
-| [D37](D37-config-layers.md) | 配置全局 + 项目 |
+| [D37](D37-config-layers.md) | 只有全局配置 |
 | [D42](D42-profile-layers.md) | profile 全局 + 项目 |
 | [D45](D45-tool-name.md) | 默认工具名 subagent，重名不处理 |
 | [D46](D46-no-role-detection.md) | 角色只看 inbox 目录 |

@@ -1,7 +1,7 @@
 
 # M0 归档
 
-M0 于 2026-10-23 完成：一个 `subagent` 工具、只有 `run`、固定 worker、fresh context、异步结果、4 个并发槽、1s 轮询、无配置。当前代码仍是 M0；v1 契约见 [v1 契约](../../specs/0001-v1-contract.md)，决策见 [决策](../../decisions/README.md)。本文是历史快照，不再更新。
+M0 于 2026-10-23 完成：一个 `subagent` 工具、只有 `run`、固定 worker、fresh context、异步结果、4 个并发槽、1s 轮询、无配置。当前代码见 [ARCHITECTURE](../../ARCHITECTURE.md)；v1 契约见 [v1 契约](../../specs/0001-v1-contract.md)，决策见 [决策](../../decisions/README.md)。本文是历史快照，不再更新。
 
 - 设计/验收快照：[spec.md](spec.md)
 - E2E 记录：[e2e-logs.md](e2e-logs.md)

@@ -18,11 +18,11 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 | config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
 | profile | 读 `<agent-dir>/agents/*.md`：拆 frontmatter 与 body，校验字段；解析 skills 路径 | pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
 
-入口不是模块：只构造真实 host/session、注入 `loadConfig`、导出扩展。
+入口不是模块：只构造真实 host/session、把 `agentDir()` 绑定进 `loadConfig`、注入 `loadProfiles`、导出扩展。
 
 ### extension
 
-pi 适配层：在 `session_start` 注册工具、检查 `HERDR_ENV`、挂 `session_start` / `session_shutdown`、把结果封装成 `subagent_result`、把 ToolError 渲染成 `isError`。注册名、开关与工具文案来自 config；文案里的 `{{profiles}}` 在注册时用 `loadProfiles` 展开。run 的 `profile` 原样传给 subagent；profile 查询与错误在 subagent 内。
+pi 适配层：在 `session_start` 注册工具、挂 `session_start` / `session_shutdown`；工具调用时检查 `HERDR_ENV`，把 ToolError 渲染成 `isError`；异步结果封装成 `subagent_result`。注册名、开关与工具文案来自 config；文案里的 `{{profiles}}` 在注册时用 `loadProfiles` 展开。run 的 `profile` 原样传给 subagent；profile 查询与错误在 subagent 内。
 
 不持有 run 状态，不做并发、命名、轮询、截断、JSONL 解析，也不直接碰 herdr CLI。测试从注册后的工具进入。
 
@@ -30,9 +30,9 @@ pi 适配层：在 `session_start` 注册工具、检查 `HERDR_ENV`、挂 `sess
 
 run 生命周期内核。对外只有 SubagentService：`run`、`onResult`、`shutdown`、`active`。
 
-M0 负责槽位、`<profile>-<n>` 与 pane 标签、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
+subagent 负责槽位、`<profile>-<n>` 与 pane 标签、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
 
-profile 随后落成子进程参数与身份文件，`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
+profile 随后落成子进程参数；append / replace 另写身份文件。`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
 
 最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
 
@@ -44,11 +44,11 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 
 ### session
 
-`readLastAssistant(path)`：读 child session JSONL，返回最后一条 assistant 消息的 `{ text, pendingToolCall }`。text 是 text block 拼接并 trim；pendingToolCall 表示该消息仍带 toolCall。文件不存在、坏行、没有文本时 text 为 null；不重试、不 sleep、不写文件。重试和路径策略在 subagent。
+`readLastAssistant(path)`：读 child session JSONL，返回最后一条 assistant 消息的 `{ text, pendingToolCall }`。text 是 text block 拼接并 trim；pendingToolCall 表示该消息仍带 toolCall。文件读不到、坏行、没有文本时 text 为 null；不重试、不 sleep、不写文件。重试和路径策略在 subagent。
 
 ### config
 
-`loadConfig()` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`；其余键留给后续任务。
+`loadConfig(agentDir)` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。agent 目录由入口用 profile 的 `agentDir()` 解析。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`；其余键留给后续任务。
 
 index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
 
@@ -63,7 +63,7 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 - extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 inbox、`<childSession>.exit` 回执与续聊。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
-- 当前 M0 的逐 run `getAgent`、1s 轮询是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
+- 当前代码逐 run 调 `getAgent`，每 1s 轮询一次；v1 改为 `agent list` 快照，以 [v1 契约](specs/0001-v1-contract.md) 为准。
 
 ## 2. 依赖方向
 
@@ -101,7 +101,7 @@ subagent -> config
 - 唯一 mock seam 是 pi 扩展 API + 注入 HerdrHost：fake pi、fake host、fake timers、临时 session JSONL。测试不 mock SubagentService 内部，也不 mock Node fs；真实 CLI 字段由手工 E2E 校准，不写第二个 mock。
 - 仓库级守卫是 `scripts/check-imports.mjs`（零依赖 node 脚本）；提交前闸是 `.githooks/pre-commit`（`git config core.hooksPath .githooks` 启用一次），与 CI 跑同一批命令。
 - 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
-- 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只放真实 `auth.json` 与最小 `settings.json`；步骤见 [e2e/herdr.md](e2e/herdr.md)。
+- 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只从全局复制真实 `auth.json`，另写最小 `settings.json`、`keybindings.json`、`config.json` 与 `agents/explore.md`；步骤见 [e2e/herdr.md](e2e/herdr.md)。
 
 ### seam
 
@@ -129,6 +129,7 @@ bridge 的真实渲染另做手工 E2E。
 | `docs/e2e/herdr.md` | 当前手工 E2E runbook | 契约与理由 |
 | `docs/archive/m0/*` | M0 spec、任务、审计、E2E 记录 | 当前契约 |
 | `docs/todos/*.md` | v1 任务台账、验收证据 | 契约与理由 |
+| `docs/audit/*.md` | 任务验收结论与证据 | 契约与理由 |
 | `docs/research/*.md` | 外部实测与参考记录 | 当前契约 |
 
 内容归属冲突时以本表裁决；跨文档只允许指针，不允许复述。
@@ -136,6 +137,6 @@ bridge 的真实渲染另做手工 E2E。
 ## 5. 约束
 
 - 不写自建 registry；子 session、brief、inbox 都只是文件，不承担恢复。
-- M0 通过 `pi -e` 加载；v1 全局安装（npm），bridge 是同一扩展内的监听器。无 marker / 角色检测；子进程也加载本包。
+- 当前通过 `pi -e` 加载；v1 全局安装（npm），bridge 是同一扩展内的监听器。无 marker / 角色检测；子进程也加载本包。
 - 任务状态只在 `docs/todos/`；M0 已完成记录移到 `docs/archive/m0/`，架构文档不写进度。
 - 内部接口以代码和类型为唯一事实来源；文档只写代码里读不出的约束、决策与事实。

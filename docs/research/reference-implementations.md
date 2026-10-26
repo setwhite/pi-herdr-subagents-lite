@@ -91,7 +91,7 @@
 避开：
 
 - 父模型中转反问；反问留在子 pane（D19）。
-- 自建 registry、sidecar 状态机、`.exit` 分类；改用 herdr 状态/事件（D32/D46）。
+- 自建 registry、sidecar 状态机、用 `.exit` 做生命周期判定；死亡看 herdr 状态，`.exit` 只补原因（D31/D32/D46）。
 - 依赖 `-e` 注入子侧扩展；herdr server 重启会丢启动 argv（D31/D46）。
 - 拿 pane 文本做生命周期判定；只在失败后读尾部诊断（D32）。
 - 进程内 conversation；子代理必须是独立进程，pane 才能人工接管（D3）。

@@ -40,11 +40,18 @@ Start a background subagent in a herdr pane; results arrive asynchronously.
 
 ## 2. 任务简报
 
-工具把 `task` 原样写进 `<childSession>.brief.md`，再用 `@<briefFile>` 投递。模板不强制：
+工具在 `<childSession>.brief.md` 写入固定的 worker 指令与 `# Task` 段，`task` 原样接在段后；`system-prompt: task` 时 profile body 在最前。随后用 `@<briefFile>` 投递。worker 指令固定为：
+
+~~~text
+You are a worker subagent. Complete the task below in the current working directory.
+Do not spawn subagents. If you need a decision and ask_user_question is available,
+use it; the human answers in your pane. Otherwise, state the decision needed in your
+final answer. Finish with a concise summary: what you did, where, and any open questions.
+~~~
+
+`task` 内不要再写 `# Task`；工具已加。模板不强制：
 
 ~~~md
-# Task: <short title>
-
 ## Goal
 <one paragraph: what to achieve>
 
