@@ -1,13 +1,24 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { loadProfiles, type Profile } from "../src/profile/index.ts";
 
 let agentDir = "";
+let projectDir = "";
 
 function agentsDir(): string {
   return join(agentDir, "agents");
+}
+
+function catalog(options: { trusted?: boolean } = {}) {
+  return loadProfiles({ cwd: projectDir, trusted: options.trusted ?? false });
+}
+
+function writeProjectProfile(fileName: string, content: string) {
+  const file = join(projectDir, ".pi", "agents", fileName);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, content);
 }
 
 function writeProfile(fileName: string, content: string): string {
@@ -18,7 +29,7 @@ function writeProfile(fileName: string, content: string): string {
 }
 
 function onlyProfile(): Profile {
-  const { profiles } = loadProfiles();
+  const { profiles } = catalog();
   const profile = profiles[0];
   if (profiles.length !== 1 || !profile) {
     throw new Error(`expected one profile, got ${profiles.length}`);
@@ -33,12 +44,14 @@ function profileFrom(frontmatter: string, body = "Body.\n"): Profile {
 
 beforeEach(() => {
   agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-profiles-"));
+  projectDir = mkdtempSync(join(tmpdir(), "pi-herdr-project-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
 });
 
 afterEach(() => {
   delete process.env.PI_CODING_AGENT_DIR;
   rmSync(agentDir, { recursive: true, force: true });
+  rmSync(projectDir, { recursive: true, force: true });
 });
 
 it("splits frontmatter from the body", () => {
@@ -109,7 +122,7 @@ it("rejects malformed tool lists", () => {
   for (const value of ["read,+bash", "read,,bash", "+"]) {
     const file = writeProfile("explore.md", `---\ntools: ${value}\n---\n\nbody\n`);
 
-    expect(loadProfiles().problems).toEqual([
+    expect(catalog().problems).toEqual([
       {
         name: "explore",
         file,
@@ -124,7 +137,7 @@ it("rejects skills that are not names", () => {
   for (const value of ['["a", ""]', '["+a"]']) {
     const file = writeProfile("explore.md", `---\nskills: ${value}\n---\n\nbody\n`);
 
-    expect(loadProfiles().problems).toEqual([
+    expect(catalog().problems).toEqual([
       { name: "explore", file, field: "skills", reason: "expected skill names, without + / - prefixes" },
     ]);
   }
@@ -133,7 +146,7 @@ it("rejects skills that are not names", () => {
 it("ignores unknown fields", () => {
   writeProfile("explore.md", "---\nsession-mode: yolo\ndenyWrites: true\n---\n\nbody\n");
 
-  const { profiles, problems } = loadProfiles();
+  const { profiles, problems } = catalog();
 
   expect(problems).toEqual([]);
   expect(profiles.map((profile) => profile.name)).toEqual(["explore"]);
@@ -142,7 +155,7 @@ it("ignores unknown fields", () => {
 it("reports a bad thinking level", () => {
   const file = writeProfile("explore.md", "---\nthinking: sometimes\n---\n\nbody\n");
 
-  const { profiles, problems } = loadProfiles();
+  const { profiles, problems } = catalog();
 
   expect(profiles).toEqual([]);
   expect(problems).toEqual([
@@ -153,7 +166,7 @@ it("reports a bad thinking level", () => {
 it("reports a bad field type", () => {
   const file = writeProfile("explore.md", "---\nmodel: [a]\nauto-exit: yes please\n---\n\nbody\n");
 
-  const { profiles, problems } = loadProfiles();
+  const { profiles, problems } = catalog();
 
   expect(profiles).toEqual([]);
   expect(problems).toEqual([
@@ -165,14 +178,40 @@ it("reports a bad field type", () => {
 it("reports broken frontmatter", () => {
   const file = writeProfile("broken.md", "---\nthinking: [\n---\n\nbody\n");
 
-  const { problems } = loadProfiles();
+  const { problems } = catalog();
 
   expect(problems.map((problem) => problem.field)).toEqual(["frontmatter"]);
   expect(problems[0]?.file).toBe(file);
 });
 
 it("returns no profiles when the agents directory is missing", () => {
-  expect(loadProfiles()).toEqual({ profiles: [], problems: [] });
+  expect(catalog()).toEqual({ profiles: [], problems: [] });
+});
+
+it("reads project profiles when trusted", () => {
+  writeProfile("global.md", "Global body.\n");
+  writeProjectProfile("project.md", "Project body.\n");
+
+  expect(catalog().profiles.map((profile) => profile.name)).toEqual(["global"]);
+  expect(catalog({ trusted: true }).profiles.map((profile) => profile.name)).toEqual(["global", "project"]);
+});
+
+it("lets project profiles override global ones", () => {
+  writeProfile("worker.md", "---\ndescription: Global worker\n---\n\nGlobal body.\n");
+  writeProjectProfile("worker.md", "---\ndescription: Project worker\n---\n\nProject body.\n");
+
+  const { profiles } = catalog({ trusted: true });
+
+  expect(profiles).toHaveLength(1);
+  expect(profiles[0]?.description).toBe("Project worker");
+  expect(profiles[0]?.body).toBe("Project body.");
+});
+
+it("lets a project profile replace a broken global one", () => {
+  writeProfile("worker.md", "---\nthinking: sometimes\n---\n\nGlobal body.\n");
+  writeProjectProfile("worker.md", "---\nthinking: high\n---\n\nProject body.\n");
+
+  expect(catalog({ trusted: true })).toMatchObject({ profiles: [{ name: "worker", thinking: "high" }], problems: [] });
 });
 
 it("lists profiles by file name", () => {
@@ -180,5 +219,5 @@ it("lists profiles by file name", () => {
   writeProfile("alpha.md", "Alpha body.\n");
   writeProfile("notes.txt", "not a profile");
 
-  expect(loadProfiles().profiles.map((profile) => profile.name)).toEqual(["alpha", "zeta"]);
+  expect(catalog().profiles.map((profile) => profile.name)).toEqual(["alpha", "zeta"]);
 });

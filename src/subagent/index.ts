@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
-import { loadProfiles, type Profile, skillPath } from "../profile/index.ts";
+import { type Profile, type ProfileCatalog, skillPath } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -68,6 +68,7 @@ export interface SubagentService {
 export interface SubagentServiceDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  loadProfiles: () => ProfileCatalog;
   maxConcurrent: number;
   maxResultChars: number;
 }
@@ -154,8 +155,7 @@ export function profileLabel(profile: Profile): string {
   return profile.description === "" ? profile.displayName : `${profile.displayName} — ${profile.description}`;
 }
 
-function resolveProfile(name: string): Profile {
-  const { profiles, problems } = loadProfiles();
+function resolveProfile({ profiles, problems }: ProfileCatalog, name: string): Profile {
   const invalid = problems.filter((problem) => problem.name === name);
   if (invalid.length > 0) {
     throw new ToolError(
@@ -184,6 +184,7 @@ function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
 export function createSubagentService({
   host,
   readLastAssistant,
+  loadProfiles,
   maxConcurrent,
   maxResultChars,
 }: SubagentServiceDeps): SubagentService {
@@ -325,7 +326,7 @@ export function createSubagentService({
 
   return {
     async run(profileName, task) {
-      const profile = resolveProfile(profileName);
+      const profile = resolveProfile(loadProfiles(), profileName);
       if (runs.length >= maxConcurrent) {
         const names = active().join(", ");
         throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);

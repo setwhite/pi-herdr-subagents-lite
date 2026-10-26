@@ -1,7 +1,7 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与全局 profile，名字按 profile 生成，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与 profile（全局，受信项目可覆盖），名字按 profile 生成，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
@@ -21,7 +21,7 @@ pi -e ./src/index.ts
 
 ## 用法
 
-在 herdr pane 里启动 pi 后，先写一个 profile（`<agent-dir>/agents/<name>.md`，YAML frontmatter + body），再调 `subagent` 的 `run`：
+在 herdr pane 里启动 pi 后，先写一个 profile（`<agent-dir>/agents/<name>.md`，YAML frontmatter + body；受信项目可用 `.pi/agents/<name>.md` 覆盖），再调 `subagent` 的 `run`：
 
 ~~~json
 {"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}

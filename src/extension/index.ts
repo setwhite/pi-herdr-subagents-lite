@@ -1,8 +1,8 @@
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { SessionStartEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
-import type { Profile, ProfileCatalog } from "../profile/index.ts";
+import type { Profile, ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 import {
   createSubagentService,
@@ -17,13 +17,21 @@ export interface ExtensionDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
   loadConfig: () => Config;
-  loadProfiles: () => ProfileCatalog;
+  loadProfiles: (sources: ProfileSources) => ProfileCatalog;
+}
+
+export interface SessionContext {
+  cwd: string;
+  isProjectTrusted(): boolean;
 }
 
 const parameters = Type.Object(
   {
     action: Type.Literal("run", { description: "Start a run in a herdr pane." }),
-    profile: Type.String({ minLength: 1, description: "Profile name from <agent-dir>/agents/*.md." }),
+    profile: Type.String({
+      minLength: 1,
+      description: "Profile name from <agent-dir>/agents/*.md, or .pi/agents/*.md in a trusted project.",
+    }),
     task: Type.String({ minLength: 1, description: "Self-contained task for the worker." }),
   },
   { additionalProperties: false },
@@ -51,7 +59,8 @@ function expand(text: string, toolName: string, profiles: Profile[]): string {
 }
 
 export interface ExtensionRegistrar {
-  on(event: "session_start" | "session_shutdown", handler: () => void): void;
+  on(event: "session_start", handler: (event: SessionStartEvent, ctx: SessionContext) => void): void;
+  on(event: "session_shutdown", handler: () => void): void;
   registerTool(tool: SubagentTool): void;
   sendMessage(
     message: { customType: string; content: string; display: boolean },
@@ -107,11 +116,12 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       );
     };
 
-    const startService = (): SubagentService => {
+    const startService = (sources: ProfileSources): SubagentService => {
       service?.shutdown();
       service = createSubagentService({
         host: deps.host,
         readLastAssistant: deps.readLastAssistant,
+        loadProfiles: () => deps.loadProfiles(sources),
         maxConcurrent: config.maxConcurrent,
         maxResultChars: config.maxResultChars,
       });
@@ -119,11 +129,11 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       return service;
     };
 
-    const register = () => {
+    const register = (sources: ProfileSources) => {
       if (!config.enabled) {
         return;
       }
-      const profiles = deps.loadProfiles().profiles;
+      const profiles = deps.loadProfiles(sources).profiles.filter((profile) => !profile.disableModelInvocation);
       pi.registerTool({
         name: config.toolName,
         label: "Subagent",
@@ -149,9 +159,10 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       });
     };
 
-    pi.on("session_start", () => {
-      startService();
-      register();
+    pi.on("session_start", (_event, ctx) => {
+      const sources = { cwd: ctx.cwd, trusted: ctx.isProjectTrusted() };
+      startService(sources);
+      register(sources);
     });
 
     pi.on("session_shutdown", () => {

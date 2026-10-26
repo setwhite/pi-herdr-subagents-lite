@@ -2,9 +2,15 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config/index.ts";
-import { createExtension, type ExtensionRegistrar, type SubagentTool } from "../src/extension/index.ts";
+import {
+  createExtension,
+  type ExtensionRegistrar,
+  type SessionContext,
+  type SubagentTool,
+} from "../src/extension/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
 import { loadProfiles } from "../src/profile/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
@@ -15,15 +21,20 @@ interface SentMessage {
   options: { triggerTurn?: boolean } | undefined;
 }
 
+type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
+
 function fakePi(events: string[] = []) {
   const tools: SubagentTool[] = [];
-  const handlers = new Map<string, Array<() => void>>();
+  const startHandlers: SessionStartHandler[] = [];
+  const shutdownHandlers: Array<() => void> = [];
   const sent: SentMessage[] = [];
   const pi: ExtensionRegistrar = {
-    on(event, handler) {
-      const registered = handlers.get(event) ?? [];
-      registered.push(handler);
-      handlers.set(event, registered);
+    on(event: "session_start" | "session_shutdown", handler: SessionStartHandler | (() => void)) {
+      if (event === "session_start") {
+        startHandlers.push(handler as SessionStartHandler);
+        return;
+      }
+      shutdownHandlers.push(handler as () => void);
     },
     registerTool(tool) {
       tools.push(tool);
@@ -33,13 +44,13 @@ function fakePi(events: string[] = []) {
       sent.push({ message, options });
     },
   };
-  const startSession = () => {
-    for (const handler of handlers.get("session_start") ?? []) {
-      handler();
+  const startSession = (ctx: SessionContext = { cwd: projectDir, isProjectTrusted: () => false }) => {
+    for (const handler of startHandlers) {
+      handler({ type: "session_start", reason: "startup" }, ctx);
     }
   };
   const shutdownSession = () => {
-    for (const handler of handlers.get("session_shutdown") ?? []) {
+    for (const handler of shutdownHandlers) {
       handler();
     }
   };
@@ -117,6 +128,7 @@ function fakeHost(
 }
 
 let agentDir = "";
+let projectDir = "";
 
 function configFile(): string {
   return join(agentDir, "pi-herdr-subagents-lite", "config.json");
@@ -133,14 +145,20 @@ function writeProfile(fileName: string, content: string) {
   writeFileSync(file, content);
 }
 
+function writeProjectProfile(fileName: string, content: string) {
+  const file = join(projectDir, ".pi", "agents", fileName);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, content);
+}
+
 function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
   createExtension({ host, readLastAssistant, loadConfig, loadProfiles })(pi);
 }
 
-function loadSession(host: HerdrHost, events: string[] = []) {
+function loadSession(host: HerdrHost, events: string[] = [], ctx?: SessionContext) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
   registerExtension(pi, host);
-  startSession();
+  startSession(ctx);
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
     throw new Error(`expected one registered tool, got ${tools.length}`);
@@ -148,8 +166,8 @@ function loadSession(host: HerdrHost, events: string[] = []) {
   return { sent, shutdownSession, startSession, tool };
 }
 
-function loadTool(host: HerdrHost) {
-  return loadSession(host).tool;
+function loadTool(host: HerdrHost, ctx?: SessionContext) {
+  return loadSession(host, [], ctx).tool;
 }
 
 function loadTimedSession(
@@ -245,9 +263,11 @@ const tempDirs = new Set<string>();
 beforeEach(() => {
   delete process.env.HERDR_ENV;
   agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-agent-"));
+  projectDir = mkdtempSync(join(tmpdir(), "pi-herdr-project-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
   writeProfile("worker.md", "Worker body.\n");
   tempDirs.add(agentDir);
+  tempDirs.add(projectDir);
 });
 
 afterEach(async () => {
@@ -595,6 +615,38 @@ it("expands profiles in guidelines", () => {
   writeConfig({ prompts: { snippet: "" } });
   const hidden = loadSession(fakeHost().host);
   expect(hidden.tool.promptSnippet).toBe("");
+});
+
+it("reads project profiles only when trusted", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ndescription: Global worker\n---\n\nGlobal body.\n");
+  writeProjectProfile("worker.md", "---\ndescription: Project worker\n---\n\nProject body.\n");
+  writeProjectProfile("project.md", "---\ndescription: Project profile\n---\n\nProject body.\n");
+
+  const untrusted = loadSession(fakeHost().host);
+  const untrustedGuidelines = untrusted.tool.promptGuidelines?.join("\n") ?? "";
+  expect(untrustedGuidelines).not.toContain("Project worker");
+  expect(untrustedGuidelines).not.toContain("Project profile");
+  expect(firstText(await runTask(untrusted.tool, "inspect", "project"))).toContain("unknown_profile");
+
+  const trusted = loadSession(fakeHost().host, [], { cwd: projectDir, isProjectTrusted: () => true });
+  const trustedGuidelines = trusted.tool.promptGuidelines?.join("\n") ?? "";
+  expect(trustedGuidelines).toContain("worker — Project worker");
+  expect(trustedGuidelines).not.toContain("Global worker");
+  expect(trustedGuidelines).toContain("project — Project profile");
+  expect(parseStarted(await runTask(trusted.tool, "inspect", "project")).name).toBe("project-1");
+});
+
+it("hides non-invocable profiles", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("secret.md", "---\ndescription: Hidden profile\ndisable-model-invocation: true\n---\n\nSecret body.\n");
+
+  const tool = loadTool(fakeHost().host);
+  expect(tool.promptGuidelines?.join("\n")).not.toContain("secret");
+
+  const result = await runTask(tool, "inspect", "secret");
+  expect(result.isError).toBe(false);
+  expect(parseStarted(result).name).toBe("secret-1");
 });
 
 it("names runs after the profile", async () => {

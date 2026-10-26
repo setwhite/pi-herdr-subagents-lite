@@ -50,11 +50,11 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 
 `loadConfig()` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`；其余键留给后续任务。
 
-index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次，profile 在注册时读取。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
+index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
 
 ### profile
 
-`loadProfiles()` 读 `<agent-dir>/agents/*.md`：profile 名 = 文件名（去 `.md`），YAML frontmatter 与 body 分开；字段按 [v1 契约](specs/0001-v1-contract.md) 第 2 节校验，未知字段忽略。坏字段只跳过该 profile，返回 `{ profiles, problems }`，模块自己不抛错；agents 目录不存在时返回空列表。subagent 每次 run 调一次，把 problems 映射成 `profile_invalid`，把缺名字映射成 `unknown_profile`。
+`loadProfiles({ cwd, trusted })` 读全局 `<agent-dir>/agents/*.md`；`trusted` 为 true 时再读 `<cwd>/.pi/agents/*.md`，同名文件由项目版本覆盖（全局的问题也一并让位）。profile 名 = 文件名（去 `.md`），YAML frontmatter 与 body 分开；字段按 [v1 契约](specs/0001-v1-contract.md) 第 2 节校验，未知字段忽略。坏字段只跳过该 profile，返回 `{ profiles, problems }`，模块自己不抛错；目录不存在时视为空。extension 在 `session_start` 用 ctx 的 `cwd` 与 `isProjectTrusted()` 取目录；subagent 每次 run 通过注入的 loader 取一次，把 problems 映射成 `profile_invalid`，把缺名字映射成 `unknown_profile`。
 
 profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 frontmatter，`getAgentDir` 定位 agent 目录（`PI_CODING_AGENT_DIR` 或 `~/.pi/agent`）。
 
@@ -108,7 +108,7 @@ subagent -> session
 |---|---|---|
 | pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、结果消息 |
 | loadConfig | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验、配置错误 |
-| loadProfiles | 临时 agent 目录 + 真实 fs | frontmatter 与 body 拆分、字段校验、坏字段 |
+| loadProfiles | 临时 agent 目录、临时项目目录 + 真实 fs | frontmatter 与 body 拆分、字段校验、坏字段、受信项目的覆盖 |
 | SessionReader | 纯函数表驱动 | JSONL 解析边界 |
 | 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/close、真实 child |
 | bridge（v1，extension 内） | fake pi events | `ui_prompt_*` → `herdr:blocked` |

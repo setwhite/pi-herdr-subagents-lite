@@ -32,6 +32,11 @@ export interface ProfileCatalog {
   problems: ProfileProblem[];
 }
 
+export interface ProfileSources {
+  cwd: string;
+  trusted: boolean;
+}
+
 const THINKING_LEVELS: readonly Thinking[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const SYSTEM_PROMPT_MODES: readonly SystemPromptMode[] = ["append", "replace", "task"];
 
@@ -171,8 +176,7 @@ export function skillPath(name: string): string {
   return join(getAgentDir(), "skills", name);
 }
 
-export function loadProfiles(): ProfileCatalog {
-  const dir = join(getAgentDir(), "agents");
+function readAgentsDir(dir: string): ProfileCatalog {
   let entries: string[];
   try {
     entries = readdirSync(dir).filter((entry) => entry.endsWith(".md"));
@@ -201,5 +205,22 @@ export function loadProfiles(): ProfileCatalog {
     }
     problems.push(...parsed.problems);
   }
+  return { profiles, problems };
+}
+
+export function loadProfiles({ cwd, trusted }: ProfileSources): ProfileCatalog {
+  const global = readAgentsDir(join(getAgentDir(), "agents"));
+  if (!trusted) {
+    return global;
+  }
+
+  const project = readAgentsDir(join(cwd, ".pi", "agents"));
+  const projectNames = new Set([
+    ...project.profiles.map((profile) => profile.name),
+    ...project.problems.map((problem) => problem.name),
+  ]);
+  const profiles = [...global.profiles.filter((profile) => !projectNames.has(profile.name)), ...project.profiles];
+  const problems = [...global.problems.filter((problem) => !projectNames.has(problem.name)), ...project.problems];
+  profiles.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   return { profiles, problems };
 }
