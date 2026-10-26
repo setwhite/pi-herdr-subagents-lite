@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
-import { loadProfiles, type Profile } from "../profile/index.ts";
+import { loadProfiles, type Profile, skillPath } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
 const NAME_RETRIES = 3;
@@ -92,6 +92,36 @@ function resultText(text: string, limit: number, sessionFile: string): string {
     return text;
   }
   return `${leadingChars(text, limit)}\n\n[truncated at ${limit} characters]\n\nSession: ${sessionFile}`;
+}
+
+function agentArgs(profile: Profile, identityFile: string): string[] {
+  const args: string[] = [];
+  if (profile.model !== undefined) {
+    args.push("--model", profile.model);
+  }
+  if (profile.thinking !== undefined) {
+    args.push("--thinking", profile.thinking);
+  }
+  if (profile.tools !== undefined) {
+    args.push(...(profile.tools === "" ? ["--no-tools"] : ["--tools", profile.tools]));
+  }
+  if (profile.skills !== undefined) {
+    args.push("--no-skills");
+    for (const name of profile.skills) {
+      args.push("--skill", skillPath(name));
+    }
+  }
+  if (profile.systemPrompt === "append") {
+    args.push("--append-system-prompt", identityFile);
+  } else if (profile.systemPrompt === "replace") {
+    args.push("--system-prompt", identityFile);
+  }
+  return args;
+}
+
+function briefText(profile: Profile, task: string): string {
+  const lead = profile.systemPrompt === "task" && profile.body !== "" ? `${profile.body}\n\n` : "";
+  return `${lead}${WORKER_INSTRUCTIONS}\n\n# Task\n${task}\n`;
 }
 
 function resolveProfile(name: string): Profile {
@@ -289,9 +319,15 @@ export function createSubagentService({
       try {
         await mkdir(runRoot, { recursive: true });
         const briefFile = join(runRoot, `brief-${runNumber}.md`);
-        await writeFile(briefFile, `${WORKER_INSTRUCTIONS}\n\n# Task\n${task}\n`, "utf8");
+        await writeFile(briefFile, briefText(profile, task), "utf8");
+        const identityFile = `${run.sessionFile}.identity.md`;
+        if (profile.systemPrompt !== "task") {
+          await writeFile(identityFile, profile.body, "utf8");
+        }
 
-        const tab = await host.createTab({ cwd: process.cwd(), label: run.name });
+        const argv = agentArgs(profile, identityFile);
+        const cwd = profile.cwd === undefined ? process.cwd() : resolve(process.cwd(), profile.cwd);
+        const tab = await host.createTab({ cwd, label: run.name });
         run.tabId = tab.tabId;
         run.paneId = tab.paneId;
 
@@ -302,6 +338,7 @@ export function createSubagentService({
               paneId: tab.paneId,
               sessionFile: run.sessionFile,
               briefFile,
+              agentArgs: argv,
             });
             break;
           } catch (error) {

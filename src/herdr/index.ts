@@ -12,6 +12,7 @@ export interface StartAgentInput {
   paneId: string;
   sessionFile: string;
   briefFile: string;
+  agentArgs: string[];
 }
 
 export interface AgentSnapshot {
@@ -146,7 +147,7 @@ export function createHerdrHost(): HerdrHost {
       await execHerdrJson(["tab", "rename", tabId, label]);
     },
 
-    async startAgent({ name, paneId, sessionFile, briefFile }) {
+    async startAgent({ name, paneId, sessionFile, briefFile, agentArgs }) {
       await execHerdrJson([
         "agent",
         "start",
@@ -160,6 +161,7 @@ export function createHerdrHost(): HerdrHost {
         "--",
         "--session",
         sessionFile,
+        ...agentArgs,
       ]);
       await execHerdrJson(["agent", "prompt", name, `@${briefFile}`]);
     },

@@ -12,11 +12,11 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
 | extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config 类型、herdr/session 端口（type-only）；pi 类型 |
-| subagent | run 生命周期、profile 解析、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、Node fs |
+| subagent | run 生命周期、profile 解析与 argv、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
 | config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
-| profile | 读 `<agent-dir>/agents/*.md`：拆 frontmatter 与 body，校验字段 | pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
+| profile | 读 `<agent-dir>/agents/*.md`：拆 frontmatter 与 body，校验字段；解析 skills 路径 | pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
 
 入口不是模块：只构造真实 host/session、注入 `loadConfig`、导出扩展。
 
@@ -30,13 +30,17 @@ pi 适配层：注册工具、检查 `HERDR_ENV`、挂 `session_start` / `sessio
 
 run 生命周期内核。对外只有 SubagentService：`run`、`onResult`、`shutdown`、`active`。
 
-M0 负责槽位、`worker-N`、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
+M0 负责槽位、`worker-N`、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
+
+profile 随后落成子进程参数与身份文件，`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
+
+最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
 
 ### herdr
 
 HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）与 `resumeAgent`（同一 session 重启续聊）。
 
-CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
+CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时；profile 生成的参数由 subagent 传入，herdr 只拼接。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
 
 ### session
 
@@ -56,7 +60,7 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 
 ### v1 差异
 
-- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 profile、配置、`<profile>-<n>`、inbox、`<childSession>.exit` 回执与续聊。
+- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 `<profile>-<n>`、inbox、`<childSession>.exit` 回执与续聊。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
 - 当前 M0 的 `worker-N`、逐 run `getAgent`、1s 轮询是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
@@ -100,7 +104,7 @@ subagent -> session
 
 | seam | 用法 | 覆盖 |
 |---|---|---|
-| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、并发、结果消息 |
+| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、结果消息 |
 | loadConfig | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验、配置错误 |
 | loadProfiles | 临时 agent 目录 + 真实 fs | frontmatter 与 body 拆分、字段校验、坏字段 |
 | SessionReader | 纯函数表驱动 | JSONL 解析边界 |

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -172,6 +172,21 @@ function runTask(tool: SubagentTool, task: string, profile = "worker") {
   return tool.execute("call-1", { action: "run", profile, task }, undefined, undefined, {} as never);
 }
 
+function startRun(
+  fake: ReturnType<typeof fakeHost>,
+  options: { profile?: string; task?: string } = {},
+): Promise<{ agent: StartAgentInput; started: RunStarted }> {
+  return runTask(loadTool(fake.host), options.task ?? "inspect the repo", options.profile).then((result) => {
+    const started = parseStarted(result);
+    tempDirs.add(dirname(started.sessionFile));
+    const agent = fake.agents[0];
+    if (!agent) {
+      throw new Error("expected startAgent to be called");
+    }
+    return { agent, started };
+  });
+}
+
 function firstText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content[0];
   if (block?.type !== "text" || block.text === undefined) {
@@ -288,44 +303,118 @@ it("documents the asynchronous prompt contract", () => {
 
 it("launches a worker", async () => {
   process.env.HERDR_ENV = "1";
-  const { agents, host, tabs } = fakeHost();
-  const tool = loadTool(host);
+  const fake = fakeHost();
+  const { agent, started } = await startRun(fake);
 
-  const result = await runTask(tool, "inspect the repo");
-  const started = parseStarted(result);
-
-  expect(result.isError).toBe(false);
   expect(started).toMatchObject({ state: "running", name: "worker-1", paneId: "w1:p1" });
-  expect(tabs).toEqual([{ cwd: process.cwd(), label: "worker-1" }]);
-
-  const agent = agents[0];
-  if (!agent) {
-    throw new Error("expected startAgent to be called");
-  }
+  expect(fake.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1" }]);
   expect(agent).toMatchObject({ name: "worker-1", paneId: started.paneId, sessionFile: started.sessionFile });
   const brief = await readFile(agent.briefFile, "utf8");
   expect(brief).toContain("inspect the repo");
   expect(brief).toContain("You are a worker subagent");
   expect(brief).toContain("Do not spawn subagents");
-  tempDirs.add(dirname(agent.briefFile));
 });
 
 it("starts a run with a global profile", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
-  const { agents, host } = fakeHost();
-  const tool = loadTool(host);
 
-  const result = await runTask(tool, "inspect the repo", "explore");
-  const started = parseStarted(result);
+  const { started } = await startRun(fakeHost(), { profile: "explore" });
 
-  expect(result.isError).toBe(false);
   expect(started).toMatchObject({ state: "running", name: "worker-1", paneId: "w1:p1" });
-  tempDirs.add(dirname(started.sessionFile));
-  const agent = agents[0];
-  if (agent) {
-    tempDirs.add(dirname(agent.briefFile));
+});
+
+it("uses the profile cwd", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ncwd: sub\n---\n\nWorker body.\n");
+  const nested = fakeHost();
+
+  await startRun(nested);
+
+  expect(nested.tabs).toEqual([{ cwd: join(process.cwd(), "sub"), label: "worker-1" }]);
+
+  writeProfile("worker.md", "---\ndescription: no cwd\n---\n\nWorker body.\n");
+  const plain = fakeHost();
+
+  await startRun(plain);
+
+  expect(plain.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1" }]);
+});
+
+it("passes model and thinking", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\nmodel: opencode-go/x\nthinking: high\n---\n\nWorker body.\n");
+
+  const { agent } = await startRun(fakeHost());
+
+  expect(agent.agentArgs).toEqual(expect.arrayContaining(["--model", "opencode-go/x", "--thinking", "high"]));
+});
+
+it("writes the identity file", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ndescription: append\n---\n\nExplore body.\n");
+
+  const appended = await startRun(fakeHost());
+  const identity = `${appended.started.sessionFile}.identity.md`;
+  expect(await readFile(identity, "utf8")).toBe("Explore body.");
+  expect(appended.agent.agentArgs).toEqual(expect.arrayContaining(["--append-system-prompt", identity]));
+  expect(appended.agent.agentArgs).not.toContain("--system-prompt");
+
+  writeProfile("worker.md", "---\nsystem-prompt: replace\n---\n\nReplace body.\n");
+  const replaced = await startRun(fakeHost());
+  const secondIdentity = `${replaced.started.sessionFile}.identity.md`;
+  expect(await readFile(secondIdentity, "utf8")).toBe("Replace body.");
+  expect(replaced.agent.agentArgs).toEqual(expect.arrayContaining(["--system-prompt", secondIdentity]));
+  expect(replaced.agent.agentArgs).not.toContain("--append-system-prompt");
+
+  writeProfile("worker.md", "---\nsystem-prompt: task\n---\n\nTask body.\n");
+  const tasked = await startRun(fakeHost());
+  expect(existsSync(`${tasked.started.sessionFile}.identity.md`)).toBe(false);
+  expect(tasked.agent.agentArgs).not.toContain("--append-system-prompt");
+  expect(tasked.agent.agentArgs).not.toContain("--system-prompt");
+  expect((await readFile(tasked.agent.briefFile, "utf8")).startsWith("Task body.")).toBe(true);
+});
+
+it("maps tools", async () => {
+  process.env.HERDR_ENV = "1";
+  const cases: Array<[string, string[]]> = [
+    ["read,bash", ["--tools", "read,bash"]],
+    ["+read,-subagent", ["--tools", "+read,-subagent"]],
+    ['""', ["--no-tools"]],
+  ];
+
+  for (const [tools, expected] of cases) {
+    writeProfile("worker.md", `---\ntools: ${tools}\n---\n\nWorker body.\n`);
+
+    const { agent } = await startRun(fakeHost());
+
+    expect(agent.agentArgs).toEqual(expect.arrayContaining(expected));
+    expect(agent.agentArgs).not.toContain(expected[0] === "--no-tools" ? "--tools" : "--no-tools");
   }
+});
+
+it("maps skills", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\nskills: [a, b]\n---\n\nWorker body.\n");
+
+  const named = await startRun(fakeHost());
+
+  expect(named.agent.agentArgs).toEqual(
+    expect.arrayContaining([
+      "--no-skills",
+      "--skill",
+      join(agentDir, "skills", "a"),
+      "--skill",
+      join(agentDir, "skills", "b"),
+    ]),
+  );
+
+  writeProfile("worker.md", "---\ndescription: none\n---\n\nWorker body.\n");
+
+  const plain = await startRun(fakeHost());
+
+  expect(plain.agent.agentArgs).not.toContain("--skill");
+  expect(plain.agent.agentArgs).not.toContain("--no-skills");
 });
 
 it("lists profiles on unknown profile", async () => {

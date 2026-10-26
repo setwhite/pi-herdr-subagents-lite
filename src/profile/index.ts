@@ -167,6 +167,10 @@ function parseProfile(file: string, source: string): { profile?: Profile; proble
   return problems.length === 0 ? { profile, problems } : { problems };
 }
 
+export function skillPath(name: string): string {
+  return join(getAgentDir(), "skills", name);
+}
+
 export function loadProfiles(): ProfileCatalog {
   const dir = join(getAgentDir(), "agents");
   let entries: string[];
