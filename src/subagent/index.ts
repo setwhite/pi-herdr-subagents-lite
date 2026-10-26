@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
+import { loadProfiles, type Profile } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
 const NAME_RETRIES = 3;
@@ -56,7 +57,7 @@ export class ToolError extends Error {
 }
 
 export interface SubagentService {
-  run(task: string): Promise<RunStarted>;
+  run(profile: string, task: string): Promise<RunStarted>;
   onResult(handler: ResultHandler): void;
   shutdown(): void;
   active(): string[];
@@ -71,6 +72,7 @@ export interface SubagentServiceDeps {
 
 interface ActiveRun {
   name: string;
+  profile: Profile;
   paneId: string;
   sessionFile: string;
   tabId: string;
@@ -90,6 +92,30 @@ function resultText(text: string, limit: number, sessionFile: string): string {
     return text;
   }
   return `${leadingChars(text, limit)}\n\n[truncated at ${limit} characters]\n\nSession: ${sessionFile}`;
+}
+
+function resolveProfile(name: string): Profile {
+  const { profiles, problems } = loadProfiles();
+  const invalid = problems.filter((problem) => problem.name === name);
+  if (invalid.length > 0) {
+    throw new ToolError(
+      "profile_invalid",
+      invalid.map((problem) => `${problem.file}: ${problem.field}: ${problem.reason}`).join("; "),
+    );
+  }
+  const profile = profiles.find((candidate) => candidate.name === name);
+  if (profile) {
+    return profile;
+  }
+  const available =
+    profiles.length === 0
+      ? "none"
+      : profiles
+          .map((candidate) =>
+            candidate.description === "" ? candidate.name : `${candidate.name} — ${candidate.description}`,
+          )
+          .join(", ");
+  throw new ToolError("unknown_profile", `unknown profile "${name}"; available: ${available}`);
 }
 
 function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
@@ -240,7 +266,8 @@ export function createSubagentService({
   }
 
   return {
-    async run(task) {
+    async run(profileName, task) {
+      const profile = resolveProfile(profileName);
       if (runs.length >= maxConcurrent) {
         const names = active().join(", ");
         throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);
@@ -249,6 +276,7 @@ export function createSubagentService({
       const runNumber = nextRunNumber++;
       const run: ActiveRun = {
         name: nextName(),
+        profile,
         paneId: "",
         sessionFile: join(runRoot, `session-${runNumber}.jsonl`),
         tabId: "",

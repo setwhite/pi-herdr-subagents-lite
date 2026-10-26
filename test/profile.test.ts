@@ -1,0 +1,184 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { loadProfiles, type Profile } from "../src/profile/index.ts";
+
+let agentDir = "";
+
+function agentsDir(): string {
+  return join(agentDir, "agents");
+}
+
+function writeProfile(fileName: string, content: string): string {
+  const file = join(agentsDir(), fileName);
+  mkdirSync(agentsDir(), { recursive: true });
+  writeFileSync(file, content);
+  return file;
+}
+
+function onlyProfile(): Profile {
+  const { profiles } = loadProfiles();
+  const profile = profiles[0];
+  if (profiles.length !== 1 || !profile) {
+    throw new Error(`expected one profile, got ${profiles.length}`);
+  }
+  return profile;
+}
+
+function profileFrom(frontmatter: string, body = "Body.\n"): Profile {
+  writeProfile("explore.md", `---\n${frontmatter}\n---\n\n${body}`);
+  return onlyProfile();
+}
+
+beforeEach(() => {
+  agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-profiles-"));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+});
+
+afterEach(() => {
+  delete process.env.PI_CODING_AGENT_DIR;
+  rmSync(agentDir, { recursive: true, force: true });
+});
+
+it("splits frontmatter from the body", () => {
+  const profile = profileFrom("description: Explore the repo", "# Explore\n\nFind things.\n");
+
+  expect(profile.name).toBe("explore");
+  expect(profile.description).toBe("Explore the repo");
+  expect(profile.body).toBe("# Explore\n\nFind things.");
+});
+
+it("keeps the whole file as body without frontmatter", () => {
+  writeProfile("plain.md", "Just text.\n");
+
+  const profile = onlyProfile();
+
+  expect(profile.name).toBe("plain");
+  expect(profile.body).toBe("Just text.\n");
+  expect(profile.description).toBe("");
+});
+
+it("falls back to the file name as display name", () => {
+  expect(profileFrom("description: x").displayName).toBe("explore");
+
+  expect(profileFrom("name: Explorer\ndescription: x").displayName).toBe("Explorer");
+});
+
+it("parses skills as a list", () => {
+  expect(profileFrom("skills: a").skills).toEqual(["a"]);
+  expect(profileFrom("skills: [a, b]").skills).toEqual(["a", "b"]);
+  expect(profileFrom('skills: ""').skills).toEqual([]);
+  expect(profileFrom("skills: []").skills).toEqual([]);
+  expect(profileFrom("description: none").skills).toBeUndefined();
+});
+
+it("reads the remaining profile fields", () => {
+  const profile = profileFrom(
+    'model: opencode-go/x\nthinking: high\ntools: "read,bash"\ncwd: sub\nsystem-prompt: replace\nauto-exit: true\ndisable-model-invocation: true',
+  );
+
+  expect(profile.model).toBe("opencode-go/x");
+  expect(profile.thinking).toBe("high");
+  expect(profile.tools).toBe("read,bash");
+  expect(profile.cwd).toBe("sub");
+  expect(profile.systemPrompt).toBe("replace");
+  expect(profile.autoExit).toBe(true);
+  expect(profile.disableModelInvocation).toBe(true);
+});
+
+it("fills defaults", () => {
+  const profile = profileFrom("description: x");
+
+  expect(profile.model).toBeUndefined();
+  expect(profile.thinking).toBeUndefined();
+  expect(profile.tools).toBeUndefined();
+  expect(profile.skills).toBeUndefined();
+  expect(profile.cwd).toBeUndefined();
+  expect(profile.systemPrompt).toBe("append");
+  expect(profile.autoExit).toBe(false);
+  expect(profile.disableModelInvocation).toBe(false);
+});
+
+it("accepts signed tool lists", () => {
+  expect(profileFrom("tools: +read,-bash").tools).toBe("+read,-bash");
+  expect(profileFrom('tools: ""').tools).toBe("");
+});
+
+it("rejects malformed tool lists", () => {
+  for (const value of ["read,+bash", "read,,bash", "+"]) {
+    const file = writeProfile("explore.md", `---\ntools: ${value}\n---\n\nbody\n`);
+
+    expect(loadProfiles().problems).toEqual([
+      {
+        name: "explore",
+        file,
+        field: "tools",
+        reason: "expected comma-separated names, or +name/-name entries, not both",
+      },
+    ]);
+  }
+});
+
+it("rejects skills that are not names", () => {
+  for (const value of ['["a", ""]', '["+a"]']) {
+    const file = writeProfile("explore.md", `---\nskills: ${value}\n---\n\nbody\n`);
+
+    expect(loadProfiles().problems).toEqual([
+      { name: "explore", file, field: "skills", reason: "expected skill names, without + / - prefixes" },
+    ]);
+  }
+});
+
+it("ignores unknown fields", () => {
+  writeProfile("explore.md", "---\nsession-mode: yolo\ndenyWrites: true\n---\n\nbody\n");
+
+  const { profiles, problems } = loadProfiles();
+
+  expect(problems).toEqual([]);
+  expect(profiles.map((profile) => profile.name)).toEqual(["explore"]);
+});
+
+it("reports a bad thinking level", () => {
+  const file = writeProfile("explore.md", "---\nthinking: sometimes\n---\n\nbody\n");
+
+  const { profiles, problems } = loadProfiles();
+
+  expect(profiles).toEqual([]);
+  expect(problems).toEqual([
+    { name: "explore", file, field: "thinking", reason: "expected one of off, minimal, low, medium, high, xhigh, max" },
+  ]);
+});
+
+it("reports a bad field type", () => {
+  const file = writeProfile("explore.md", "---\nmodel: [a]\nauto-exit: yes please\n---\n\nbody\n");
+
+  const { profiles, problems } = loadProfiles();
+
+  expect(profiles).toEqual([]);
+  expect(problems).toEqual([
+    { name: "explore", file, field: "model", reason: "expected string, got array" },
+    { name: "explore", file, field: "auto-exit", reason: "expected boolean, got string" },
+  ]);
+});
+
+it("reports broken frontmatter", () => {
+  const file = writeProfile("broken.md", "---\nthinking: [\n---\n\nbody\n");
+
+  const { problems } = loadProfiles();
+
+  expect(problems.map((problem) => problem.field)).toEqual(["frontmatter"]);
+  expect(problems[0]?.file).toBe(file);
+});
+
+it("returns no profiles when the agents directory is missing", () => {
+  expect(loadProfiles()).toEqual({ profiles: [], problems: [] });
+});
+
+it("lists profiles by file name", () => {
+  writeProfile("zeta.md", "Zeta body.\n");
+  writeProfile("alpha.md", "Alpha body.\n");
+  writeProfile("notes.txt", "not a profile");
+
+  expect(loadProfiles().profiles.map((profile) => profile.name)).toEqual(["alpha", "zeta"]);
+});

@@ -11,7 +11,8 @@ const EDGES = {
   ".": ["config", "extension", "herdr", "session"],
   config: ["config"],
   extension: ["config", "extension", "subagent", "herdr", "session"],
-  subagent: ["subagent", "herdr", "session"],
+  subagent: ["subagent", "profile", "herdr", "session"],
+  profile: ["profile"],
   herdr: ["herdr"],
   session: ["session"],
 };
@@ -20,15 +21,21 @@ const EDGES = {
 const SINGLE_IMPORT = [
   {
     specifier: /^@earendil-works\/pi-coding-agent$/,
-    only: ["src/index.ts", "src/extension/index.ts"],
+    only: ["src/index.ts", "src/extension/index.ts", "src/profile/index.ts"],
     typeOnlyIn: ["src/index.ts", "src/extension/index.ts"],
   },
   { specifier: /^typebox$/, only: ["src/extension/index.ts"] },
   { specifier: /^node:child_process$/, only: ["src/herdr/index.ts"] },
-  { specifier: /^node:fs(\/|$)/, only: ["src/config/index.ts", "src/session/index.ts", "src/subagent/index.ts"] },
-  { specifier: /^node:(path|os|crypto)$/, only: ["src/config/index.ts", "src/subagent/index.ts"] },
   {
-    specifier: /^\.\.\/(config|herdr|session)\/index\.ts$/,
+    specifier: /^node:fs(\/|$)/,
+    only: ["src/config/index.ts", "src/profile/index.ts", "src/session/index.ts", "src/subagent/index.ts"],
+  },
+  {
+    specifier: /^node:(path|os|crypto)$/,
+    only: ["src/config/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
+  },
+  {
+    specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
     only: ["src/extension/index.ts", "src/subagent/index.ts"],
     typeOnlyIn: ["src/extension/index.ts"],
   },

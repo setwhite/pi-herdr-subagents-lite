@@ -19,7 +19,8 @@ export interface ExtensionDeps {
 
 const parameters = Type.Object(
   {
-    action: Type.Literal("run", { description: "Lifecycle action; M0 only starts a run." }),
+    action: Type.Literal("run", { description: "Start a run in a herdr pane." }),
+    profile: Type.String({ minLength: 1, description: "Profile name from <agent-dir>/agents/*.md." }),
     task: Type.String({ minLength: 1, description: "Self-contained task for the worker." }),
   },
   { additionalProperties: false },
@@ -131,7 +132,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
           return notInHerdr();
         }
         try {
-          return started(await currentService().run(params.task));
+          return started(await currentService().run(params.profile, params.task));
         } catch (error) {
           if (error instanceof ToolError) {
             return toolFailed(error);

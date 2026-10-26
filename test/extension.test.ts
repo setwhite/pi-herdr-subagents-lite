@@ -120,6 +120,12 @@ function writeConfig(value: unknown) {
   writeFileSync(configFile(), JSON.stringify(value));
 }
 
+function writeProfile(fileName: string, content: string) {
+  const file = join(agentDir, "agents", fileName);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, content);
+}
+
 function loadSession(host: HerdrHost, events: string[] = []) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
   createExtension({ host, readLastAssistant, loadConfig })(pi);
@@ -162,8 +168,8 @@ async function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]
   return started;
 }
 
-function runTask(tool: SubagentTool, task: string) {
-  return tool.execute("call-1", { action: "run", task }, undefined, undefined, {} as never);
+function runTask(tool: SubagentTool, task: string, profile = "worker") {
+  return tool.execute("call-1", { action: "run", profile, task }, undefined, undefined, {} as never);
 }
 
 function firstText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -204,6 +210,7 @@ beforeEach(() => {
   delete process.env.HERDR_ENV;
   agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-agent-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
+  writeProfile("worker.md", "Worker body.\n");
   tempDirs.add(agentDir);
 });
 
@@ -228,10 +235,11 @@ it("registers the subagent schema", () => {
     additionalProperties: boolean;
   };
   expect(schema.type).toBe("object");
-  expect(Object.keys(schema.properties)).toEqual(["action", "task"]);
+  expect(Object.keys(schema.properties)).toEqual(["action", "profile", "task"]);
   expect(schema.properties.action).toMatchObject({ const: "run" });
+  expect(schema.properties.profile).toMatchObject({ type: "string", minLength: 1 });
   expect(schema.properties.task).toMatchObject({ type: "string", minLength: 1 });
-  expect(schema.required).toEqual(["action", "task"]);
+  expect(schema.required).toEqual(["action", "profile", "task"]);
   expect(schema.additionalProperties).toBe(false);
 });
 
@@ -249,7 +257,7 @@ it("rejects outside herdr", async () => {
 
   const result = await tool.execute(
     "call-1",
-    { action: "run", task: "inspect the repo" },
+    { action: "run", profile: "worker", task: "inspect the repo" },
     undefined,
     undefined,
     {} as never,
@@ -300,6 +308,54 @@ it("launches a worker", async () => {
   expect(brief).toContain("You are a worker subagent");
   expect(brief).toContain("Do not spawn subagents");
   tempDirs.add(dirname(agent.briefFile));
+});
+
+it("starts a run with a global profile", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
+  const { agents, host } = fakeHost();
+  const tool = loadTool(host);
+
+  const result = await runTask(tool, "inspect the repo", "explore");
+  const started = parseStarted(result);
+
+  expect(result.isError).toBe(false);
+  expect(started).toMatchObject({ state: "running", name: "worker-1", paneId: "w1:p1" });
+  tempDirs.add(dirname(started.sessionFile));
+  const agent = agents[0];
+  if (agent) {
+    tempDirs.add(dirname(agent.briefFile));
+  }
+});
+
+it("lists profiles on unknown profile", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
+  const { calls, host } = fakeHost();
+  const tool = loadTool(host);
+
+  const result = await runTask(tool, "inspect the repo", "nope");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "unknown_profile" });
+  expect(firstText(result)).toContain("explore");
+  expect(calls).toEqual([]);
+});
+
+it("reports invalid profile", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\nthinking: sometimes\n---\n\nExplore body.\n");
+  const { calls, host } = fakeHost();
+  const tool = loadTool(host);
+
+  const result = await runTask(tool, "inspect the repo", "explore");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "profile_invalid" });
+  const text = firstText(result);
+  expect(text).toContain("explore.md");
+  expect(text).toContain("thinking");
+  expect(calls).toEqual([]);
 });
 
 it("uses configured max concurrent", async () => {

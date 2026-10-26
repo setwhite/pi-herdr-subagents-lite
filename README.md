@@ -1,7 +1,7 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码是 M0：只支持 `run`、固定 worker、异步结果；v1 的 profile、send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与全局 profile，worker 命名固定，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
@@ -21,10 +21,10 @@ pi -e ./src/index.ts
 
 ## 用法
 
-在 herdr pane 里启动 pi 后，调 `subagent` 的 `run`：
+在 herdr pane 里启动 pi 后，先写一个 profile（`<agent-dir>/agents/<name>.md`，YAML frontmatter + body），再调 `subagent` 的 `run`：
 
 ~~~json
-{"action":"run","task":"Read README.md and answer with its first heading."}
+{"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}
 ~~~
 
 返回 `{"state":"running","name":"worker-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent worker-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
