@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { loadConfig } from "../src/config/index.ts";
 
 const specDefaults = {
@@ -16,24 +16,22 @@ const specDefaults = {
   bridge: { enabled: true, blockedOn: ["custom", "select", "confirm", "input", "editor"] },
 };
 
-function withAgentDir<T>(file: string | undefined, read: () => T): T {
+function withAgentDir<T>(file: string | undefined, read: (agentDir: string) => T): T {
   const agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-config-"));
-  process.env.PI_CODING_AGENT_DIR = agentDir;
   if (file !== undefined) {
     const target = join(agentDir, "pi-herdr-subagents-lite", "config.json");
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, file);
   }
   try {
-    return read();
+    return read(agentDir);
   } finally {
-    delete process.env.PI_CODING_AGENT_DIR;
     rmSync(agentDir, { recursive: true, force: true });
   }
 }
 
 function readConfig(value?: unknown) {
-  return withAgentDir(value === undefined ? undefined : JSON.stringify(value), loadConfig);
+  return withAgentDir(value === undefined ? undefined : JSON.stringify(value), (agentDir) => loadConfig(agentDir));
 }
 
 it("uses the spec defaults when the config file is missing", () => {
@@ -75,25 +73,25 @@ it.each([
 });
 
 it("rejects a config file that is not valid JSON", () => {
-  expect(() => withAgentDir("{", loadConfig)).toThrow(/not valid JSON/);
+  expect(() => withAgentDir("{", (agentDir) => loadConfig(agentDir))).toThrow(/not valid JSON/);
 });
 
 it("rejects a config file that is not a JSON object", () => {
-  expect(() => withAgentDir("[]", loadConfig)).toThrow(/expected a JSON object/);
+  expect(() => withAgentDir("[]", (agentDir) => loadConfig(agentDir))).toThrow(/expected a JSON object/);
 });
 
-it("ignores an empty agent dir override", () => {
-  const home = mkdtempSync(join(tmpdir(), "pi-herdr-home-"));
-  const file = join(home, ".pi", "agent", "pi-herdr-subagents-lite", "config.json");
+it("reads from the given agent dir, not the env", () => {
+  const fromEnv = mkdtempSync(join(tmpdir(), "pi-herdr-config-"));
+  const passed = mkdtempSync(join(tmpdir(), "pi-herdr-config-"));
+  const file = join(fromEnv, "pi-herdr-subagents-lite", "config.json");
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify({ maxConcurrent: 3 }));
-  vi.stubEnv("HOME", home);
-  vi.stubEnv("USERPROFILE", home);
-  vi.stubEnv("PI_CODING_AGENT_DIR", "");
+  process.env.PI_CODING_AGENT_DIR = fromEnv;
   try {
-    expect(loadConfig().maxConcurrent).toBe(3);
+    expect(loadConfig(passed).maxConcurrent).toBe(16);
   } finally {
-    vi.unstubAllEnvs();
-    rmSync(home, { recursive: true, force: true });
+    delete process.env.PI_CODING_AGENT_DIR;
+    rmSync(fromEnv, { recursive: true, force: true });
+    rmSync(passed, { recursive: true, force: true });
   }
 });

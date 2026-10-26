@@ -12,7 +12,7 @@ import {
   type SubagentTool,
 } from "../src/extension/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
-import { loadProfiles } from "../src/profile/index.ts";
+import { loadProfiles, agentDir as resolveAgentDir } from "../src/profile/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
 import type { RunStarted } from "../src/subagent/index.ts";
 
@@ -156,7 +156,7 @@ function writeProjectProfile(fileName: string, content: string) {
 }
 
 function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
-  createExtension({ host, readLastAssistant, loadConfig, loadProfiles })(pi);
+  createExtension({ host, readLastAssistant, loadConfig: () => loadConfig(resolveAgentDir()), loadProfiles })(pi);
 }
 
 function loadSession(host: HerdrHost, events: string[] = [], ctx?: SessionContext) {
@@ -303,6 +303,22 @@ it("reports config errors without registering", () => {
 
   expect(() => registerExtension(pi, fakeHost().host)).toThrow(/nope/);
   expect(tools).toHaveLength(0);
+});
+
+it("resolves the agent dir for config", () => {
+  const home = mkdtempSync(join(tmpdir(), "pi-herdr-home-"));
+  const configDir = join(home, "agent", "pi-herdr-subagents-lite");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "config.json"), JSON.stringify({ toolName: "tilde_tool" }));
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
+  vi.stubEnv("PI_CODING_AGENT_DIR", "~/agent");
+  try {
+    expect(loadTool(fakeHost().host).name).toBe("tilde_tool");
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 it("rejects outside herdr", async () => {

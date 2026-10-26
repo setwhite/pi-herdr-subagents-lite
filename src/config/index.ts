@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type BlockedKind = "custom" | "select" | "confirm" | "input" | "editor";
@@ -221,13 +220,7 @@ export function dataDir(agentDir: string): string {
   return join(agentDir, "pi-herdr-subagents-lite");
 }
 
-function configPath(): string {
-  const override = process.env.PI_CODING_AGENT_DIR;
-  const agentDir = override ? override : join(homedir(), ".pi", "agent");
-  return join(dataDir(agentDir), "config.json");
-}
-
-export function loadConfig(): Config {
-  const file = configPath();
+export function loadConfig(agentDir: string): Config {
+  const file = join(dataDir(agentDir), "config.json");
   return parse(readRaw(file), file);
 }
