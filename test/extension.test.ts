@@ -56,6 +56,7 @@ function fakeHost(
   const calls: string[] = options.events ?? [];
   const tabs: Array<{ cwd: string; label: string }> = [];
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
+  const renamedPanes: Array<{ paneId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
   let panes = 0;
   let starts = 0;
@@ -74,6 +75,10 @@ function fakeHost(
     async renameTab(input) {
       calls.push("renameTab");
       renamedTabs.push(input);
+    },
+    async renamePane(input) {
+      calls.push("renamePane");
+      renamedPanes.push(input);
     },
     async startAgent(input) {
       calls.push("startAgent");
@@ -101,6 +106,7 @@ function fakeHost(
     agents,
     calls,
     host,
+    renamedPanes,
     renamedTabs,
     setGetAgent(impl: (name: string) => Promise<AgentSnapshot | null>) {
       getAgentImpl = impl;
@@ -153,10 +159,13 @@ function loadTimedSession(
   return { ...loadSession(fake.host, calls), calls };
 }
 
-async function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]> {
+async function runProfiles(
+  tool: SubagentTool,
+  cases: Array<readonly [task: string, profile: string]>,
+): Promise<RunStarted[]> {
   const started: RunStarted[] = [];
-  for (let index = 1; index <= count; index++) {
-    const result = await runTask(tool, `task ${index}`);
+  for (const [task, profile] of cases) {
+    const result = await runTask(tool, task, profile);
     expect(result.isError).toBe(false);
     started.push(parseStarted(result));
   }
@@ -166,6 +175,13 @@ async function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]
   }
   tempDirs.add(dirname(first.sessionFile));
   return started;
+}
+
+function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]> {
+  return runProfiles(
+    tool,
+    Array.from({ length: count }, (_, index) => [`task ${index + 1}`, "worker"] as const),
+  );
 }
 
 function runTask(tool: SubagentTool, task: string, profile = "worker") {
@@ -321,7 +337,7 @@ it("starts a run with a global profile", async () => {
 
   const { started } = await startRun(fakeHost(), { profile: "explore" });
 
-  expect(started).toMatchObject({ state: "running", name: "worker-1", paneId: "w1:p1" });
+  expect(started).toMatchObject({ state: "running", name: "explore-1", paneId: "w1:p1" });
 });
 
 it("uses the profile cwd", async () => {
@@ -417,6 +433,20 @@ it("maps skills", async () => {
   expect(plain.agent.agentArgs).not.toContain("--no-skills");
 });
 
+it("labels the pane with the first task line", async () => {
+  process.env.HERDR_ENV = "1";
+
+  const markdown = fakeHost();
+  await startRun(markdown, { task: "## Fix   the **bug**\r\nsecond line" });
+
+  expect(markdown.renamedPanes).toEqual([{ paneId: "w1:p1", label: "Fix the bug" }]);
+
+  const long = fakeHost();
+  await startRun(long, { task: "x".repeat(40) });
+
+  expect(long.renamedPanes).toEqual([{ paneId: "w1:p1", label: "x".repeat(32) }]);
+});
+
 it("lists profiles on unknown profile", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
@@ -498,6 +528,37 @@ it("starts a fresh service for each session", async () => {
   }
 });
 
+it("names runs after the profile", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
+  const { host } = fakeHost();
+  const tool = loadTool(host);
+
+  const started = await runProfiles(tool, [
+    ["first explore", "explore"],
+    ["second explore", "explore"],
+  ]);
+
+  expect(started.map((run) => run.name)).toEqual(["explore-1", "explore-2"]);
+});
+
+it("slugifies profile names", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("Code Review!.md", "---\ndescription: Review\n---\n\nReview body.\n");
+  writeProfile("9lives.md", "---\ndescription: Nine\n---\n\nNine body.\n");
+  writeProfile("a-very-long-profile-name.md", "---\ndescription: Long\n---\n\nLong body.\n");
+  const { host } = fakeHost();
+  const tool = loadTool(host);
+
+  const started = await runProfiles(tool, [
+    ["review", "Code Review!"],
+    ["nine", "9lives"],
+    ["long", "a-very-long-profile-name"],
+  ]);
+
+  expect(started.map((run) => run.name)).toEqual(["code-review-1", "agent-9lives-1", "a-very-long-prof-1"]);
+});
+
 it("retries name_taken with next worker", async () => {
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
@@ -523,7 +584,7 @@ it("retries name_taken with next worker", async () => {
   }
 });
 
-it("gives up after three name_taken retries", async () => {
+it("gives up after 100 name retries", async () => {
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
   let nameTaken = true;
@@ -536,9 +597,9 @@ it("gives up after three name_taken retries", async () => {
   const result = await runTask(tool, "retry task");
 
   expect(result.isError).toBe(true);
-  expect(result.details).toMatchObject({ code: "spawn_failed" });
-  expect(agents.map((agent) => agent.name)).toEqual(["worker-1", "worker-2", "worker-3", "worker-4"]);
-  expect(calls.filter((call) => call === "startAgent")).toHaveLength(4);
+  expect(result.details).toMatchObject({ code: "name_exhausted" });
+  expect(agents.map((agent) => agent.name)).toEqual(Array.from({ length: 100 }, (_, index) => `worker-${index + 1}`));
+  expect(calls.filter((call) => call === "startAgent")).toHaveLength(100);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
   expect(sent).toHaveLength(0);
 

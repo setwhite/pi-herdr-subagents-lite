@@ -30,9 +30,15 @@ export interface RenameTabInput {
   label: string;
 }
 
+export interface RenamePaneInput {
+  paneId: string;
+  label: string;
+}
+
 export interface HerdrHost {
   createTab(input: { cwd: string; label: string }): Promise<CreatedTab>;
   renameTab(input: RenameTabInput): Promise<void>;
+  renamePane(input: RenamePaneInput): Promise<void>;
   startAgent(input: StartAgentInput): Promise<void>;
   getAgent(name: string): Promise<AgentSnapshot | null>;
   closeTabIfOnlyPane(input: CloseTabInput): Promise<"closed" | "kept">;
@@ -145,6 +151,10 @@ export function createHerdrHost(): HerdrHost {
 
     async renameTab({ tabId, label }) {
       await execHerdrJson(["tab", "rename", tabId, label]);
+    },
+
+    async renamePane({ paneId, label }) {
+      await execHerdrJson(["pane", "rename", paneId, label]);
     },
 
     async startAgent({ name, paneId, sessionFile, briefFile, agentArgs }) {

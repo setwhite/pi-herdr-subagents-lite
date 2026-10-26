@@ -30,7 +30,7 @@ pi 适配层：注册工具、检查 `HERDR_ENV`、挂 `session_start` / `sessio
 
 run 生命周期内核。对外只有 SubagentService：`run`、`onResult`、`shutdown`、`active`。
 
-M0 负责槽位、`worker-N`、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
+M0 负责槽位、`<profile>-<n>` 与 pane 标签、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
 
 profile 随后落成子进程参数与身份文件，`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
 
@@ -38,7 +38,7 @@ profile 随后落成子进程参数与身份文件，`cwd` 相对父 cwd 解析�
 
 ### herdr
 
-HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）与 `resumeAgent`（同一 session 重启续聊）。
+HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`renamePane`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）与 `resumeAgent`（同一 session 重启续聊）。
 
 CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时；profile 生成的参数由 subagent 传入，herdr 只拼接。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
 
@@ -60,10 +60,10 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 
 ### v1 差异
 
-- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 `<profile>-<n>`、inbox、`<childSession>.exit` 回执与续聊。
+- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 inbox、`<childSession>.exit` 回执与续聊。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
-- 当前 M0 的 `worker-N`、逐 run `getAgent`、1s 轮询是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
+- 当前 M0 的逐 run `getAgent`、1s 轮询是历史行为；v1 以 [v1 契约](specs/0001-v1-contract.md) 为准。
 
 ## 2. 依赖方向
 

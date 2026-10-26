@@ -1,7 +1,7 @@
 
 # herdr 手工 E2E
 
-当前 M0 的回归 runbook：一个 `subagent` 工具、只有 `run`、固定 `worker-N`、4 个并发槽。v1 改成 profile / config / send 后，更新本页。真实 herdr CLI 不进自动化测试，这里是唯一的手工链路。
+当前回归 runbook：一个 `subagent` 工具、只有 `run`、profile 来自 `<agent-dir>/agents/*.md`、名字 `<profile>-<n>`、并发上限来自 config。真实 herdr CLI 不进自动化测试，这里是唯一的手工链路。
 
 环境：Windows + git-bash、herdr 0.9.5、pi 1.4.0。使用隔离的 `PI_CODING_AGENT_DIR`，只复制真实 `auth.json`，不碰全局配置。
 
@@ -22,6 +22,17 @@ cat > "$AGENT_DIR/settings.json" <<'JSON'
 JSON
 cat > "$AGENT_DIR/keybindings.json" <<'JSON'
 {"app.session.new":"f12"}
+JSON
+mkdir -p "$AGENT_DIR/agents" "$AGENT_DIR/pi-herdr-subagents-lite"
+cat > "$AGENT_DIR/agents/explore.md" <<'MD'
+---
+description: Explore the repo
+---
+
+Read files and answer questions about the repository.
+MD
+cat > "$AGENT_DIR/pi-herdr-subagents-lite/config.json" <<'JSON'
+{"maxConcurrent":4}
 JSON
 
 nohup herdr --session herdr-e2e server >"$ROOT/server.log" 2>&1 &
@@ -47,16 +58,16 @@ herdr --session herdr-e2e agent start "$PARENT" --kind pi --pane "$PANE_ID" --ti
 
 ~~~bash
 herdr --session herdr-e2e agent prompt parent1 \
-  "Call subagent once: read README.md and answer with its first heading. Do not wait for the result."
+  "Call subagent once with profile explore: read README.md and answer with its first heading. Do not wait for the result."
 herdr --session herdr-e2e tab list
 ~~~
 
 预期：
 
-- 父会话先收到 `{"state":"running","name":"worker-1","paneId":"...","sessionFile":"..."}`；
-- 出现一个新的 `worker-1` tab，里面有子 pi；
-- 父会话收到一条 `[subagent worker-1] done`，内容含 README 的一级标题；
-- 结果投递后 worker tab 关闭，`agent list` 里没有 `worker-1`。
+- 父会话先收到 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`；
+- 出现一个新的 `explore-1` tab，里面有子 pi，pane 标签是任务首行；
+- 父会话收到一条 `[subagent explore-1] done`，内容含 README 的一级标题；
+- 结果投递后 worker tab 关闭，`agent list` 里没有 `explore-1`。
 
 反问验证（如果子环境有 `ask_user_question`）：派一个会提问的短任务；问题只出现在子 pane，父会话不转发、不回答；人在子 pane 回答后，父会话只收到最终 `done`。
 
@@ -64,11 +75,11 @@ herdr --session herdr-e2e tab list
 
 ~~~bash
 herdr --session herdr-e2e agent prompt parent1 \
-  "Call subagent 5 times in one turn. Each task: run 'sleep 30' then answer ONE..FIVE. Do not wait between calls."
+  "Call subagent 5 times in one turn with profile explore. Each task: run 'sleep 30' then answer ONE..FIVE. Do not wait between calls."
 herdr --session herdr-e2e tab list
 ~~~
 
-预期：前 4 条返回 `running`；第 5 条 `isError`，文本以 `max_concurrent:` 开头并列出 4 个 live 名称；`tab list` 只有 4 个 `worker-*` tab。
+预期：前 4 条返回 `running`（`explore-1`…`explore-4`）；第 5 条 `isError`，文本以 `max_concurrent:` 开头并列出 4 个 live 名称；`tab list` 只有 4 个 `explore-*` tab。
 
 ## 4. 子进程被杀
 
@@ -84,11 +95,11 @@ herdr --session herdr-e2e agent start "$PARENT" --kind pi --pane "$PANE2" --time
   --no-context-files --no-mcp --tools subagent --session "$(cygpath -w "$SESSION")"
 
 herdr --session herdr-e2e agent prompt parent2 \
-  "Call subagent once: run 'sleep 60' then answer KILL. Do not wait."
+  "Call subagent once with profile explore: run 'sleep 60' then answer KILL. Do not wait."
 herdr --session herdr-e2e tab list
 ~~~
 
-从 `tab list` 取刚出现的 `worker-*` tab，再取 pane 与子 pi 的 PID：
+从 `tab list` 取刚出现的 `explore-*` tab，再取 pane 与子 pi 的 PID：
 
 ~~~bash
 WORKER_TAB=w1:tX   # 换成实际 tab_id
@@ -101,7 +112,7 @@ taskkill //F //PID "$PID"
 herdr --session herdr-e2e tab list
 ~~~
 
-预期：父会话收到一条 `[subagent worker-N] unknown (agent_missing)`，含 `Session:` 路径；worker tab 仍在，不自动关闭。
+预期：父会话收到一条 `[subagent explore-N] unknown (agent_missing)`，含 `Session:` 路径；worker tab 仍在，不自动关闭。
 
 ## 5. 父 /new
 

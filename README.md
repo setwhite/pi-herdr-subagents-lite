@@ -27,7 +27,7 @@ pi -e ./src/index.ts
 {"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}
 ~~~
 
-返回 `{"state":"running","name":"worker-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent worker-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
+返回 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
 
 ## 开发
 

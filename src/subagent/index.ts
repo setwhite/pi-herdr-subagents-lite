@@ -6,7 +6,9 @@ import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/ind
 import { loadProfiles, type Profile, skillPath } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
-const NAME_RETRIES = 3;
+const NAME_ATTEMPTS = 100;
+const PROFILE_SLUG_CHARS = 16;
+const PANE_LABEL_CHARS = 32;
 const POLL_INTERVAL_MS = 1000;
 const POLL_FAILURE_LIMIT = 3;
 const READ_ATTEMPTS = 3;
@@ -81,10 +83,34 @@ interface ActiveRun {
   finished: boolean;
 }
 
+function profileSlug(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, PROFILE_SLUG_CHARS);
+  if (slug === "") {
+    return "worker";
+  }
+  return /^[a-z]/.test(slug) ? slug : `agent-${slug}`;
+}
+
 function leadingChars(text: string, limit: number): string {
   const last = text.charCodeAt(limit - 1);
   const cut = last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit;
   return text.slice(0, cut);
+}
+
+function paneLabel(task: string): string {
+  const line = task.split(/\r?\n/, 1)[0] ?? "";
+  const text = line
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)+/, "")
+    .replace(/\*\*|__|~~|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return leadingChars(text, PANE_LABEL_CHARS);
 }
 
 function resultText(text: string, limit: number, sessionFile: string): string {
@@ -166,11 +192,16 @@ export function createSubagentService({
 }: SubagentServiceDeps): SubagentService {
   const runs: ActiveRun[] = [];
   const runRoot = join(tmpdir(), "pi-herdr-subagents-lite", `${Date.now()}-${randomUUID()}`);
-  let nextWorkerNumber = 1;
+  const nameCounters = new Map<string, number>();
   let nextRunNumber = 1;
   let resultHandler: ResultHandler | undefined;
 
-  const nextName = () => `worker-${nextWorkerNumber++}`;
+  const nextName = (profile: string) => {
+    const slug = profileSlug(profile);
+    const number = nameCounters.get(slug) ?? 1;
+    nameCounters.set(slug, number + 1);
+    return `${slug}-${number}`;
+  };
   const active = () => runs.map((run) => run.name);
 
   function clearTimer(run: ActiveRun) {
@@ -305,7 +336,7 @@ export function createSubagentService({
 
       const runNumber = nextRunNumber++;
       const run: ActiveRun = {
-        name: nextName(),
+        name: nextName(profileName),
         profile,
         paneId: "",
         sessionFile: join(runRoot, `session-${runNumber}.jsonl`),
@@ -330,8 +361,9 @@ export function createSubagentService({
         const tab = await host.createTab({ cwd, label: run.name });
         run.tabId = tab.tabId;
         run.paneId = tab.paneId;
+        await host.renamePane({ paneId: tab.paneId, label: paneLabel(task) || run.name });
 
-        for (let retry = 0; ; retry++) {
+        for (let retry = 1; ; retry++) {
           try {
             await host.startAgent({
               name: run.name,
@@ -342,11 +374,16 @@ export function createSubagentService({
             });
             break;
           } catch (error) {
-            const nameTaken = error instanceof HerdrHostError && error.code === "name_taken";
-            if (!nameTaken || retry >= NAME_RETRIES) {
+            if (!(error instanceof HerdrHostError && error.code === "name_taken")) {
               throw error;
             }
-            run.name = nextName();
+            if (retry >= NAME_ATTEMPTS) {
+              throw new ToolError(
+                "name_exhausted",
+                `no free name for "${profileSlug(profileName)}" after ${NAME_ATTEMPTS} attempts`,
+              );
+            }
+            run.name = nextName(profileName);
             await host.renameTab({ tabId: tab.tabId, label: run.name });
           }
         }
@@ -361,6 +398,9 @@ export function createSubagentService({
         };
       } catch (error) {
         release(run);
+        if (error instanceof ToolError) {
+          throw error;
+        }
         throw spawnFailed(error, run.paneId || undefined);
       }
     },
