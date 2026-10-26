@@ -1,7 +1,7 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与全局 profile，worker 命名固定，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与全局 profile，名字按 profile 生成，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
@@ -29,6 +29,8 @@ pi -e ./src/index.ts
 
 返回 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
 
+全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`：`enabled` 控制是否注册，`toolName` 改注册名，`prompts` 覆盖工具文案。
+
 ## 开发
 
 ~~~bash
@@ -46,7 +48,7 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 - [PROMPTS](docs/PROMPTS.md) — 工具文案、任务简报、子代理提示词。
 - [决策](docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
 - [GLOSSARY](docs/GLOSSARY.md) — 术语。
-- [herdr E2E](docs/e2e/herdr.md) — 当前 M0 的手工回归 runbook。
+- [herdr E2E](docs/e2e/herdr.md) — 当前的手工回归 runbook。
 - [M0 归档](docs/archive/m0/README.md) — spec、任务/审计、E2E 记录。
 - [任务台账](docs/todos/README.md) — v1 里程碑。
 - [参考实现](docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。

@@ -150,6 +150,10 @@ function briefText(profile: Profile, task: string): string {
   return `${lead}${WORKER_INSTRUCTIONS}\n\n# Task\n${task}\n`;
 }
 
+export function profileLabel(profile: Profile): string {
+  return profile.description === "" ? profile.displayName : `${profile.displayName} — ${profile.description}`;
+}
+
 function resolveProfile(name: string): Profile {
   const { profiles, problems } = loadProfiles();
   const invalid = problems.filter((problem) => problem.name === name);
@@ -163,14 +167,7 @@ function resolveProfile(name: string): Profile {
   if (profile) {
     return profile;
   }
-  const available =
-    profiles.length === 0
-      ? "none"
-      : profiles
-          .map((candidate) =>
-            candidate.description === "" ? candidate.name : `${candidate.name} — ${candidate.description}`,
-          )
-          .join(", ");
+  const available = profiles.length === 0 ? "none" : profiles.map(profileLabel).join(", ");
   throw new ToolError("unknown_profile", `unknown profile "${name}"; available: ${available}`);
 }
 

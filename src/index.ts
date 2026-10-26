@@ -2,8 +2,14 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config/index.ts";
 import { createExtension } from "./extension/index.ts";
 import { createHerdrHost } from "./herdr/index.ts";
+import { loadProfiles } from "./profile/index.ts";
 import { readLastAssistant } from "./session/index.ts";
 
-const extension: ExtensionFactory = createExtension({ host: createHerdrHost(), readLastAssistant, loadConfig });
+const extension: ExtensionFactory = createExtension({
+  host: createHerdrHost(),
+  readLastAssistant,
+  loadConfig,
+  loadProfiles,
+});
 
 export default extension;

@@ -1,7 +1,7 @@
 
 # v1 契约
 
-v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前代码是 M0，记录见 [archive/m0](../archive/m0/README.md)。决策理由见 [决策](../decisions/README.md)，提示词与简报模板见 [PROMPTS](../PROMPTS.md)。
+v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前实现范围见 [任务台账](../todos/README.md)，M0 归档见 [archive/m0](../archive/m0/README.md)。决策理由见 [决策](../decisions/README.md)，提示词与简报模板见 [PROMPTS](../PROMPTS.md)。
 
 一句话：一个工具，两个 action（`run` / `send`）；结果异步；子代理跑在 herdr pane；fresh only。
 

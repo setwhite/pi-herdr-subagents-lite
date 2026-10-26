@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config/index.ts";
 import { createExtension, type ExtensionRegistrar, type SubagentTool } from "../src/extension/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
+import { loadProfiles } from "../src/profile/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
 import type { RunStarted } from "../src/subagent/index.ts";
 
@@ -132,9 +133,13 @@ function writeProfile(fileName: string, content: string) {
   writeFileSync(file, content);
 }
 
+function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
+  createExtension({ host, readLastAssistant, loadConfig, loadProfiles })(pi);
+}
+
 function loadSession(host: HerdrHost, events: string[] = []) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
-  createExtension({ host, readLastAssistant, loadConfig })(pi);
+  registerExtension(pi, host);
   startSession();
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
@@ -278,7 +283,7 @@ it("reports config errors without registering", () => {
   writeConfig({ nope: 1 });
   const { pi, tools } = fakePi();
 
-  expect(() => createExtension({ host: fakeHost().host, readLastAssistant, loadConfig })(pi)).toThrow(/nope/);
+  expect(() => registerExtension(pi, fakeHost().host)).toThrow(/nope/);
   expect(tools).toHaveLength(0);
 });
 
@@ -310,11 +315,12 @@ it("documents the asynchronous prompt contract", () => {
   const snippet = (tool.promptSnippet ?? "").toLowerCase();
   const guidelines = (tool.promptGuidelines ?? []).join("\n").toLowerCase();
 
-  expect(description).toContain("background worker");
+  expect(description).toContain("start a subagent");
   expect(description).toContain("asynchronously");
-  expect(snippet).toContain("background worker");
+  expect(snippet).toContain("background subagent");
   expect(snippet).toContain("asynchronously");
   expect(guidelines).toContain("subagent_result");
+  expect(guidelines).toContain("available profiles");
 });
 
 it("launches a worker", async () => {
@@ -526,6 +532,69 @@ it("starts a fresh service for each session", async () => {
   for (const agent of agents) {
     tempDirs.add(dirname(agent.briefFile));
   }
+});
+
+it("registers the tool at session start", () => {
+  process.env.HERDR_ENV = "1";
+  const { pi, startSession, tools } = fakePi();
+
+  registerExtension(pi, fakeHost().host);
+
+  expect(tools).toHaveLength(0);
+
+  startSession();
+
+  expect(tools.map((tool) => tool.name)).toEqual(["subagent"]);
+});
+
+it("honors tool name", () => {
+  process.env.HERDR_ENV = "1";
+  writeConfig({ toolName: "helper" });
+  const registered = fakePi();
+
+  registerExtension(registered.pi, fakeHost().host);
+  registered.startSession();
+
+  expect(registered.tools.map((tool) => tool.name)).toEqual(["helper"]);
+
+  for (const invalid of ["Helper", "1x", "a".repeat(33)]) {
+    writeConfig({ toolName: invalid });
+    const failed = fakePi();
+
+    expect(() => registerExtension(failed.pi, fakeHost().host)).toThrow(/toolName/);
+    expect(failed.tools).toHaveLength(0);
+  }
+});
+
+it("skips registration when disabled", () => {
+  process.env.HERDR_ENV = "1";
+  writeConfig({ enabled: false });
+  const { pi, startSession, tools } = fakePi();
+
+  registerExtension(pi, fakeHost().host);
+  startSession();
+
+  expect(tools).toHaveLength(0);
+});
+
+it("expands profiles in guidelines", () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
+
+  const defaults = loadSession(fakeHost().host);
+  expect(defaults.tool.promptGuidelines?.join("\n")).toContain("explore — Explore the repo");
+
+  writeProfile("named.md", "---\nname: Explorer\ndescription: Named profile\n---\n\nNamed body.\n");
+  const named = loadSession(fakeHost().host);
+  expect(named.tool.promptGuidelines?.join("\n")).toContain("Explorer — Named profile");
+
+  writeConfig({ prompts: { guidelines: ["Use {{toolName}}"] } });
+  const overridden = loadSession(fakeHost().host);
+  expect(overridden.tool.promptGuidelines).toEqual(["Use subagent"]);
+
+  writeConfig({ prompts: { snippet: "" } });
+  const hidden = loadSession(fakeHost().host);
+  expect(hidden.tool.promptSnippet).toBe("");
 });
 
 it("names runs after the profile", async () => {

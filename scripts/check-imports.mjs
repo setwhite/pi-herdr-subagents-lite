@@ -8,9 +8,9 @@ import { join, relative } from "node:path";
 
 /** 允许的跨模块边：模块 -> 它可以直接 import 的模块（同模块内部不查）。 */
 const EDGES = {
-  ".": ["config", "extension", "herdr", "session"],
+  ".": ["config", "extension", "herdr", "profile", "session"],
   config: ["config"],
-  extension: ["config", "extension", "subagent", "herdr", "session"],
+  extension: ["config", "extension", "profile", "subagent", "herdr", "session"],
   subagent: ["subagent", "profile", "herdr", "session"],
   profile: ["profile"],
   herdr: ["herdr"],

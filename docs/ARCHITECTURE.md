@@ -11,7 +11,7 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
-| extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config 类型、herdr/session 端口（type-only）；pi 类型 |
+| extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config/profile 类型、herdr/session 端口（type-only）；pi 类型 |
 | subagent | run 生命周期、profile 解析与 argv、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
@@ -22,7 +22,7 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 
 ### extension
 
-pi 适配层：注册工具、检查 `HERDR_ENV`、挂 `session_start` / `session_shutdown`、把结果封装成 `subagent_result`、把 ToolError 渲染成 `isError`。run 的 `profile` 原样传给 subagent；profile 查询与错误在 subagent 内。
+pi 适配层：在 `session_start` 注册工具、检查 `HERDR_ENV`、挂 `session_start` / `session_shutdown`、把结果封装成 `subagent_result`、把 ToolError 渲染成 `isError`。注册名、开关与工具文案来自 config；文案里的 `{{profiles}}` 在注册时用 `loadProfiles` 展开。run 的 `profile` 原样传给 subagent；profile 查询与错误在 subagent 内。
 
 不持有 run 状态，不做并发、命名、轮询、截断、JSONL 解析，也不直接碰 herdr CLI。测试从注册后的工具进入。
 
@@ -48,9 +48,9 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 
 ### config
 
-`loadConfig()` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。extension 只用 `maxConcurrent` 与 `maxResultChars` 两个数。
+`loadConfig()` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`；其余键留给后续任务。
 
-index 注入 `loadConfig`，extension 在工厂里调用一次。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
+index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次，profile 在注册时读取。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
 
 ### profile
 
@@ -71,10 +71,12 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 index -> extension
 index -> config
 index -> herdr
+index -> profile
 index -> session
 extension -> subagent
 extension ..> config   (type-only)
 extension ..> herdr    (type-only)
+extension ..> profile  (type-only)
 extension ..> session  (type-only)
 subagent -> herdr
 subagent -> profile
