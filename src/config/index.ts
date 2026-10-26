@@ -217,10 +217,14 @@ function readRaw(file: string): Raw {
   return parsed;
 }
 
+export function dataDir(agentDir: string): string {
+  return join(agentDir, "pi-herdr-subagents-lite");
+}
+
 function configPath(): string {
   const override = process.env.PI_CODING_AGENT_DIR;
   const agentDir = override ? override : join(homedir(), ".pi", "agent");
-  return join(agentDir, "pi-herdr-subagents-lite", "config.json");
+  return join(dataDir(agentDir), "config.json");
 }
 
 export function loadConfig(): Config {

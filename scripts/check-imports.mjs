@@ -11,7 +11,7 @@ const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session"],
   config: ["config"],
   extension: ["config", "extension", "profile", "subagent", "herdr", "session"],
-  subagent: ["subagent", "profile", "herdr", "session"],
+  subagent: ["config", "subagent", "profile", "herdr", "session"],
   profile: ["profile"],
   herdr: ["herdr"],
   session: ["session"],

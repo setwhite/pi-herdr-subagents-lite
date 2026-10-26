@@ -12,7 +12,7 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
 | extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config/profile 类型、herdr/session 端口（type-only）；pi 类型 |
-| subagent | run 生命周期、profile 解析与 argv、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、Node fs |
+| subagent | run 生命周期、profile 解析与 argv、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、config、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
 | config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
@@ -81,6 +81,7 @@ extension ..> session  (type-only)
 subagent -> herdr
 subagent -> profile
 subagent -> session
+subagent -> config
 ~~~
 
 - 只能沿箭头依赖，禁止反向 import；config、herdr、session、profile 是叶子。

@@ -145,6 +145,10 @@ function writeProfile(fileName: string, content: string) {
   writeFileSync(file, content);
 }
 
+function sessionsRoot(): string {
+  return join(agentDir, "pi-herdr-subagents-lite", "sessions");
+}
+
 function writeProjectProfile(fileName: string, content: string) {
   const file = join(projectDir, ".pi", "agents", fileName);
   mkdirSync(dirname(file), { recursive: true });
@@ -192,11 +196,6 @@ async function runProfiles(
     expect(result.isError).toBe(false);
     started.push(parseStarted(result));
   }
-  const first = started[0];
-  if (!first) {
-    throw new Error("expected a first run");
-  }
-  tempDirs.add(dirname(first.sessionFile));
   return started;
 }
 
@@ -217,7 +216,6 @@ function startRun(
 ): Promise<{ agent: StartAgentInput; started: RunStarted }> {
   return runTask(loadTool(fake.host), options.task ?? "inspect the repo", options.profile).then((result) => {
     const started = parseStarted(result);
-    tempDirs.add(dirname(started.sessionFile));
     const agent = fake.agents[0];
     if (!agent) {
       throw new Error("expected startAgent to be called");
@@ -355,6 +353,30 @@ it("launches a worker", async () => {
   expect(brief).toContain("inspect the repo");
   expect(brief).toContain("You are a worker subagent");
   expect(brief).toContain("Do not spawn subagents");
+});
+
+it("writes the child session under the agent dir", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
+  const { agent, started } = await startRun(fakeHost(), { profile: "explore" });
+
+  expect(started.sessionFile).toBe(agent.sessionFile);
+  expect(started.sessionFile.startsWith(join(sessionsRoot(), "explore-1-"))).toBe(true);
+  expect(started.sessionFile.endsWith(".jsonl")).toBe(true);
+  expect(existsSync(sessionsRoot())).toBe(true);
+});
+
+it("keeps brief and identity next to the session", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ndescription: worker\n---\n\nWorker body.\n");
+  const { agent, started } = await startRun(fakeHost());
+
+  const identity = `${started.sessionFile}.identity.md`;
+  expect(dirname(started.sessionFile)).toBe(sessionsRoot());
+  expect(agent.briefFile).toBe(`${started.sessionFile}.brief.md`);
+  expect(agent.agentArgs).toEqual(expect.arrayContaining(["--append-system-prompt", identity]));
+  expect(await readFile(agent.briefFile, "utf8")).toContain("inspect the repo");
+  expect(await readFile(identity, "utf8")).toBe("Worker body.");
 });
 
 it("starts a run with a global profile", async () => {
@@ -507,9 +529,8 @@ it("uses configured max concurrent", async () => {
   writeConfig({ maxConcurrent: 2 });
   const limited = loadTimedSession(async () => null);
 
-  const first = parseStarted(await runTask(limited.tool, "task 1"));
+  await runTask(limited.tool, "task 1");
   const second = parseStarted(await runTask(limited.tool, "task 2"));
-  tempDirs.add(dirname(first.sessionFile));
 
   expect(second.name).toBe("worker-2");
 
@@ -542,16 +563,12 @@ it("rejects the seventeenth active worker by default", async () => {
 
 it("starts a fresh service for each session", async () => {
   process.env.HERDR_ENV = "1";
-  const { agents, host } = fakeHost();
+  const { host } = fakeHost();
   const { startSession, tool } = loadSession(host);
 
   expect(parseStarted(await runTask(tool, "first task")).name).toBe("worker-1");
   startSession();
   expect(parseStarted(await runTask(tool, "next session")).name).toBe("worker-1");
-
-  for (const agent of agents) {
-    tempDirs.add(dirname(agent.briefFile));
-  }
 });
 
 it("registers the tool at session start", () => {
@@ -695,14 +712,19 @@ it("retries name_taken with next worker", async () => {
   expect(calls.filter((call) => call === "createTab")).toHaveLength(1);
   expect(calls.filter((call) => call === "startAgent")).toHaveLength(2);
   expect(renamedTabs).toEqual([{ tabId: "w1:t1", label: "worker-2" }]);
-  expect(agents[0]?.sessionFile).toBe(agents[1]?.sessionFile);
-  expect(agents[0]?.briefFile).toBe(agents[1]?.briefFile);
-  expect(sent).toHaveLength(0);
-
-  const agent = agents[0];
-  if (agent) {
-    tempDirs.add(dirname(agent.briefFile));
+  expect(agents[0]?.sessionFile.startsWith(join(sessionsRoot(), "worker-1-"))).toBe(true);
+  expect(agents[1]?.sessionFile.startsWith(join(sessionsRoot(), "worker-2-"))).toBe(true);
+  expect(agents[1]?.sessionFile).not.toBe(agents[0]?.sessionFile);
+  expect(agents[1]?.briefFile).toBe(`${agents[1]?.sessionFile}.brief.md`);
+  const [firstAgent, secondAgent] = agents;
+  if (!firstAgent || !secondAgent) {
+    throw new Error("expected two startAgent calls");
   }
+  expect(existsSync(`${firstAgent.sessionFile}.brief.md`)).toBe(false);
+  expect(existsSync(`${firstAgent.sessionFile}.identity.md`)).toBe(false);
+  expect(existsSync(`${secondAgent.sessionFile}.brief.md`)).toBe(true);
+  expect(existsSync(`${secondAgent.sessionFile}.identity.md`)).toBe(true);
+  expect(sent).toHaveLength(0);
 });
 
 it("gives up after 100 name retries", async () => {
@@ -727,16 +749,11 @@ it("gives up after 100 name retries", async () => {
   nameTaken = false;
 
   expect((await runTask(tool, "next task")).isError).toBe(false);
-
-  const agent = agents[0];
-  if (agent) {
-    tempDirs.add(dirname(agent.briefFile));
-  }
 });
 
 it("uses distinct child sessions", async () => {
   process.env.HERDR_ENV = "1";
-  const { agents, host } = fakeHost();
+  const { host } = fakeHost();
   const tool = loadTool(host);
 
   const first = parseStarted(await runTask(tool, "first task"));
@@ -744,12 +761,9 @@ it("uses distinct child sessions", async () => {
 
   expect(first.name).toBe("worker-1");
   expect(second.name).toBe("worker-2");
+  expect(first.sessionFile.startsWith(join(sessionsRoot(), "worker-1-"))).toBe(true);
+  expect(second.sessionFile.startsWith(join(sessionsRoot(), "worker-2-"))).toBe(true);
   expect(second.sessionFile).not.toBe(first.sessionFile);
-
-  const agent = agents[0];
-  if (agent) {
-    tempDirs.add(dirname(agent.briefFile));
-  }
 });
 
 it("reports createTab failure", async () => {
@@ -772,7 +786,6 @@ it("reports createTab failure", async () => {
 
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
-  tempDirs.add(dirname(parseStarted(next).sessionFile));
 });
 
 it("reports startAgent failure with pane", async () => {
@@ -801,14 +814,12 @@ it("reports startAgent failure with pane", async () => {
 
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
-  tempDirs.add(dirname(parseStarted(next).sessionFile));
 });
 
 it("delivers one done result", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "say hello"));
-  tempDirs.add(dirname(started.sessionFile));
   writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -834,7 +845,6 @@ it("ignores completion seq zero", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => snapshot);
 
   const started = parseStarted(await runTask(tool, "status first"));
-  tempDirs.add(dirname(started.sessionFile));
   writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -863,8 +873,7 @@ it("does not overlap polls", async () => {
     return { status: "working", completionSeq: 0 };
   });
 
-  const started = parseStarted(await runTask(tool, "slow task"));
-  tempDirs.add(dirname(started.sessionFile));
+  await runTask(tool, "slow task");
 
   await vi.advanceTimersByTimeAsync(3000);
   expect(polls).toBe(1);
@@ -887,7 +896,6 @@ it("releases the slot after done", async () => {
   if (!first) {
     throw new Error("expected a first run");
   }
-  tempDirs.add(dirname(first.sessionFile));
   writeFileSync(first.sessionFile, `${assistantLine("hello")}\n`);
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -903,7 +911,6 @@ it("reports missing agent as unknown", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => null);
 
   const started = parseStarted(await runTask(tool, "vanished task"));
-  tempDirs.add(dirname(started.sessionFile));
 
   await vi.advanceTimersByTimeAsync(1000);
 
@@ -918,7 +925,6 @@ it("reports missing agent as unknown", async () => {
 
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
-  tempDirs.add(dirname(parseStarted(next).sessionFile));
 });
 
 it("reports three consecutive poll failures", async () => {
@@ -926,8 +932,7 @@ it("reports three consecutive poll failures", async () => {
     throw new Error("herdr answered with garbage");
   });
 
-  const started = parseStarted(await runTask(tool, "flaky task"));
-  tempDirs.add(dirname(started.sessionFile));
+  await runTask(tool, "flaky task");
 
   await vi.advanceTimersByTimeAsync(2000);
   expect(sent).toHaveLength(0);
@@ -952,7 +957,6 @@ it("resets poll failure count on success", async () => {
   });
 
   const started = parseStarted(await runTask(tool, "eventual success"));
-  tempDirs.add(dirname(started.sessionFile));
   writeFileSync(started.sessionFile, `${assistantLine("finished")}\n`);
 
   await vi.advanceTimersByTimeAsync(3000);
@@ -968,7 +972,6 @@ it("waits while the worker is blocked in a tool call", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "done", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "ask the human"));
-  tempDirs.add(dirname(started.sessionFile));
   writeFileSync(started.sessionFile, `${pendingAskLine()}\n`);
 
   await vi.advanceTimersByTimeAsync(5000);
@@ -989,7 +992,6 @@ it("reports unreadable result as unknown", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "no output"));
-  tempDirs.add(dirname(started.sessionFile));
 
   await vi.advanceTimersByTimeAsync(1000);
   expect(sent).toHaveLength(0);
@@ -1004,14 +1006,12 @@ it("reports unreadable result as unknown", async () => {
 
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
-  tempDirs.add(dirname(parseStarted(next).sessionFile));
 });
 
 it("truncates long result", async () => {
   const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "write a long report"));
-  tempDirs.add(dirname(started.sessionFile));
   const head = "h".repeat(16384);
   const tail = "TAIL_MARKER".padEnd(616, "t");
   writeFileSync(started.sessionFile, `${assistantLine(`${head}${tail}`)}\n`);
@@ -1034,7 +1034,6 @@ it("does not split surrogate pairs when truncating", async () => {
   const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "emoji report"));
-  tempDirs.add(dirname(started.sessionFile));
   const head = `${"h".repeat(16383)}😀`;
   writeFileSync(started.sessionFile, `${assistantLine(`${head}${"z".repeat(100)}`)}\n`);
 
@@ -1051,7 +1050,6 @@ async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error)
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }), closeTab);
 
   const started = parseStarted(await runTask(tool, "say hello"));
-  tempDirs.add(dirname(started.sessionFile));
   writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -1066,7 +1064,6 @@ async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error)
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
   expect(parseStarted(next).name).toBe("worker-2");
-  tempDirs.add(dirname(parseStarted(next).sessionFile));
 }
 
 it("keeps tab when close is refused", async () => {
@@ -1083,8 +1080,7 @@ it("stops after session shutdown", async () => {
     completionSeq: 0,
   }));
 
-  const started = parseStarted(await runTask(tool, "long task"));
-  tempDirs.add(dirname(started.sessionFile));
+  await runTask(tool, "long task");
 
   shutdownSession();
   await vi.advanceTimersByTimeAsync(5000);

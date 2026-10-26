@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { dataDir } from "../config/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
-import { type Profile, type ProfileCatalog, skillPath } from "../profile/index.ts";
+import { agentDir, type Profile, type ProfileCatalog, skillPath } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -189,9 +189,8 @@ export function createSubagentService({
   maxResultChars,
 }: SubagentServiceDeps): SubagentService {
   const runs: ActiveRun[] = [];
-  const runRoot = join(tmpdir(), "pi-herdr-subagents-lite", `${Date.now()}-${randomUUID()}`);
+  const sessionsDir = join(dataDir(agentDir()), "sessions");
   const nameCounters = new Map<string, number>();
-  let nextRunNumber = 1;
   let resultHandler: ResultHandler | undefined;
 
   const nextName = (profile: string) => {
@@ -332,12 +331,22 @@ export function createSubagentService({
         throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);
       }
 
-      const runNumber = nextRunNumber++;
+      const runId = randomUUID();
+      const files = (name: string) => {
+        const sessionFile = join(sessionsDir, `${name}-${runId}.jsonl`);
+        return {
+          sessionFile,
+          briefFile: `${sessionFile}.brief.md`,
+          identityFile: `${sessionFile}.identity.md`,
+        };
+      };
+      const name = nextName(profileName);
+      let current = files(name);
       const run: ActiveRun = {
-        name: nextName(profileName),
+        name,
         profile,
         paneId: "",
-        sessionFile: join(runRoot, `session-${runNumber}.jsonl`),
+        sessionFile: current.sessionFile,
         tabId: "",
         pollFailures: 0,
         finished: false,
@@ -346,35 +355,32 @@ export function createSubagentService({
       runs.push(run);
 
       try {
-        await mkdir(runRoot, { recursive: true });
-        const briefFile = join(runRoot, `brief-${runNumber}.md`);
-        await writeFile(briefFile, briefText(profile, task), "utf8");
-        const identityFile = `${run.sessionFile}.identity.md`;
-        if (profile.systemPrompt !== "task") {
-          await writeFile(identityFile, profile.body, "utf8");
-        }
-
-        const argv = agentArgs(profile, identityFile);
         const cwd = profile.cwd === undefined ? process.cwd() : resolve(process.cwd(), profile.cwd);
         const tab = await host.createTab({ cwd, label: run.name });
         run.tabId = tab.tabId;
         run.paneId = tab.paneId;
         await host.renamePane({ paneId: tab.paneId, label: paneLabel(task) || run.name });
+        await mkdir(sessionsDir, { recursive: true });
 
         for (let retry = 1; ; retry++) {
+          await writeFile(current.briefFile, briefText(profile, task), "utf8");
+          if (profile.systemPrompt !== "task") {
+            await writeFile(current.identityFile, profile.body, "utf8");
+          }
           try {
             await host.startAgent({
               name: run.name,
               paneId: tab.paneId,
-              sessionFile: run.sessionFile,
-              briefFile,
-              agentArgs: argv,
+              sessionFile: current.sessionFile,
+              briefFile: current.briefFile,
+              agentArgs: agentArgs(profile, current.identityFile),
             });
             break;
           } catch (error) {
             if (!(error instanceof HerdrHostError && error.code === "name_taken")) {
               throw error;
             }
+            await Promise.all([rm(current.briefFile, { force: true }), rm(current.identityFile, { force: true })]);
             if (retry >= NAME_ATTEMPTS) {
               throw new ToolError(
                 "name_exhausted",
@@ -383,6 +389,8 @@ export function createSubagentService({
             }
             run.name = nextName(profileName);
             await host.renameTab({ tabId: tab.tabId, label: run.name });
+            current = files(run.name);
+            run.sessionFile = current.sessionFile;
           }
         }
 

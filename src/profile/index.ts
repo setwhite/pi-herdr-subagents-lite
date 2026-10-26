@@ -172,8 +172,12 @@ function parseProfile(file: string, source: string): { profile?: Profile; proble
   return problems.length === 0 ? { profile, problems } : { problems };
 }
 
+export function agentDir(): string {
+  return getAgentDir();
+}
+
 export function skillPath(name: string): string {
-  return join(getAgentDir(), "skills", name);
+  return join(agentDir(), "skills", name);
 }
 
 function readAgentsDir(dir: string): ProfileCatalog {

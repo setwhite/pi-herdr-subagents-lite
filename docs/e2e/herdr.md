@@ -64,7 +64,7 @@ herdr --session herdr-e2e tab list
 
 预期：
 
-- 父会话先收到 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`；
+- 父会话先收到 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`，其中 sessionFile 是 `$AGENT_DIR/pi-herdr-subagents-lite/sessions/explore-1-<runId>.jsonl`，brief 与身份文件是同前缀的兄弟文件；
 - 出现一个新的 `explore-1` tab，里面有子 pi，pane 标签是任务首行；
 - 父会话收到一条 `[subagent explore-1] done`，内容含 README 的一级标题；
 - 结果投递后 worker tab 关闭，`agent list` 里没有 `explore-1`。
@@ -132,5 +132,3 @@ herdr --session herdr-e2e server stop
 herdr session delete herdr-e2e
 rm -rf "$ROOT"
 ~~~
-
-再删除父会话结果里 `sessionFile` 所在的 run root（`/tmp/pi-herdr-subagents-lite/...`），不要用 `*` 误删其他 run。
