@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
 import type { SessionReader } from "../session/index.ts";
 import {
@@ -13,6 +14,7 @@ import {
 export interface ExtensionDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  loadConfig: () => Config;
 }
 
 const parameters = Type.Object(
@@ -72,6 +74,7 @@ function resultText(result: SubagentResult): string {
 
 export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) => void {
   return (pi: ExtensionRegistrar) => {
+    const config = deps.loadConfig();
     let service: SubagentService | undefined;
 
     const deliver = (result: SubagentResult) => {
@@ -86,6 +89,8 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       service = createSubagentService({
         host: deps.host,
         readLastAssistant: deps.readLastAssistant,
+        maxConcurrent: config.maxConcurrent,
+        maxResultChars: config.maxResultChars,
       });
       service.onResult(deliver);
       return service;

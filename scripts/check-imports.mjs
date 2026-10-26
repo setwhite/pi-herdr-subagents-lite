@@ -8,8 +8,9 @@ import { join, relative } from "node:path";
 
 /** 允许的跨模块边：模块 -> 它可以直接 import 的模块（同模块内部不查）。 */
 const EDGES = {
-  ".": ["extension", "herdr", "session"],
-  extension: ["extension", "subagent", "herdr", "session"],
+  ".": ["config", "extension", "herdr", "session"],
+  config: ["config"],
+  extension: ["config", "extension", "subagent", "herdr", "session"],
   subagent: ["subagent", "herdr", "session"],
   herdr: ["herdr"],
   session: ["session"],
@@ -24,10 +25,10 @@ const SINGLE_IMPORT = [
   },
   { specifier: /^typebox$/, only: ["src/extension/index.ts"] },
   { specifier: /^node:child_process$/, only: ["src/herdr/index.ts"] },
-  { specifier: /^node:fs(\/|$)/, only: ["src/session/index.ts", "src/subagent/index.ts"] },
-  { specifier: /^node:(path|os|crypto)$/, only: ["src/subagent/index.ts"] },
+  { specifier: /^node:fs(\/|$)/, only: ["src/config/index.ts", "src/session/index.ts", "src/subagent/index.ts"] },
+  { specifier: /^node:(path|os|crypto)$/, only: ["src/config/index.ts", "src/subagent/index.ts"] },
   {
-    specifier: /^\.\.\/(herdr|session)\/index\.ts$/,
+    specifier: /^\.\.\/(config|herdr|session)\/index\.ts$/,
     only: ["src/extension/index.ts", "src/subagent/index.ts"],
     typeOnlyIn: ["src/extension/index.ts"],
   },

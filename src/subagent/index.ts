@@ -5,13 +5,11 @@ import { join } from "node:path";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
-const MAX_CONCURRENT = 4;
 const NAME_RETRIES = 3;
 const POLL_INTERVAL_MS = 1000;
 const POLL_FAILURE_LIMIT = 3;
 const READ_ATTEMPTS = 3;
 const READ_RETRY_DELAY_MS = 200;
-const MAX_RESULT_CHARS = 16384;
 
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
 Do not spawn subagents. If you need a decision and ask_user_question is available,
@@ -67,6 +65,8 @@ export interface SubagentService {
 export interface SubagentServiceDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  maxConcurrent: number;
+  maxResultChars: number;
 }
 
 interface ActiveRun {
@@ -79,17 +79,17 @@ interface ActiveRun {
   finished: boolean;
 }
 
-function leadingChars(text: string): string {
-  const last = text.charCodeAt(MAX_RESULT_CHARS - 1);
-  const cut = last >= 0xd800 && last <= 0xdbff ? MAX_RESULT_CHARS - 1 : MAX_RESULT_CHARS;
+function leadingChars(text: string, limit: number): string {
+  const last = text.charCodeAt(limit - 1);
+  const cut = last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit;
   return text.slice(0, cut);
 }
 
-function resultText(text: string, sessionFile: string): string {
-  if (text.length <= MAX_RESULT_CHARS) {
+function resultText(text: string, limit: number, sessionFile: string): string {
+  if (text.length <= limit) {
     return text;
   }
-  return `${leadingChars(text)}\n\n[truncated at ${MAX_RESULT_CHARS} characters]\n\nSession: ${sessionFile}`;
+  return `${leadingChars(text, limit)}\n\n[truncated at ${limit} characters]\n\nSession: ${sessionFile}`;
 }
 
 function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
@@ -102,7 +102,12 @@ function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
   return new ToolError("spawn_failed", `${detail}${created}${trust}`);
 }
 
-export function createSubagentService({ host, readLastAssistant }: SubagentServiceDeps): SubagentService {
+export function createSubagentService({
+  host,
+  readLastAssistant,
+  maxConcurrent,
+  maxResultChars,
+}: SubagentServiceDeps): SubagentService {
   const runs: ActiveRun[] = [];
   const runRoot = join(tmpdir(), "pi-herdr-subagents-lite", `${Date.now()}-${randomUUID()}`);
   let nextWorkerNumber = 1;
@@ -219,7 +224,7 @@ export function createSubagentService({ host, readLastAssistant }: SubagentServi
       await finish(run, {
         state: "done",
         name: run.name,
-        text: resultText(snapshot.text, run.sessionFile),
+        text: resultText(snapshot.text, maxResultChars, run.sessionFile),
         sessionFile: run.sessionFile,
         paneId: run.paneId,
       });
@@ -236,7 +241,7 @@ export function createSubagentService({ host, readLastAssistant }: SubagentServi
 
   return {
     async run(task) {
-      if (runs.length >= MAX_CONCURRENT) {
+      if (runs.length >= maxConcurrent) {
         const names = active().join(", ");
         throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);
       }

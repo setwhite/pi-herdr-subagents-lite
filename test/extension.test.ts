@@ -1,7 +1,9 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { loadConfig } from "../src/config/index.ts";
 import { createExtension, type ExtensionRegistrar, type SubagentTool } from "../src/extension/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
@@ -107,9 +109,20 @@ function fakeHost(
   };
 }
 
+let agentDir = "";
+
+function configFile(): string {
+  return join(agentDir, "pi-herdr-subagents-lite", "config.json");
+}
+
+function writeConfig(value: unknown) {
+  mkdirSync(dirname(configFile()), { recursive: true });
+  writeFileSync(configFile(), JSON.stringify(value));
+}
+
 function loadSession(host: HerdrHost, events: string[] = []) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
-  createExtension({ host, readLastAssistant })(pi);
+  createExtension({ host, readLastAssistant, loadConfig })(pi);
   startSession();
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
@@ -132,6 +145,21 @@ function loadTimedSession(
   const fake = fakeHost({ events: calls, closeTab });
   fake.setGetAgent(getAgent);
   return { ...loadSession(fake.host, calls), calls };
+}
+
+async function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]> {
+  const started: RunStarted[] = [];
+  for (let index = 1; index <= count; index++) {
+    const result = await runTask(tool, `task ${index}`);
+    expect(result.isError).toBe(false);
+    started.push(parseStarted(result));
+  }
+  const first = started[0];
+  if (!first) {
+    throw new Error("expected a first run");
+  }
+  tempDirs.add(dirname(first.sessionFile));
+  return started;
 }
 
 function runTask(tool: SubagentTool, task: string) {
@@ -174,6 +202,9 @@ const tempDirs = new Set<string>();
 
 beforeEach(() => {
   delete process.env.HERDR_ENV;
+  agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-agent-"));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  tempDirs.add(agentDir);
 });
 
 afterEach(async () => {
@@ -181,6 +212,7 @@ afterEach(async () => {
   await Promise.all([...tempDirs].map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs.clear();
   delete process.env.HERDR_ENV;
+  delete process.env.PI_CODING_AGENT_DIR;
 });
 
 it("registers the subagent schema", () => {
@@ -201,6 +233,14 @@ it("registers the subagent schema", () => {
   expect(schema.properties.task).toMatchObject({ type: "string", minLength: 1 });
   expect(schema.required).toEqual(["action", "task"]);
   expect(schema.additionalProperties).toBe(false);
+});
+
+it("reports config errors without registering", () => {
+  writeConfig({ nope: 1 });
+  const { pi, tools } = fakePi();
+
+  expect(() => createExtension({ host: fakeHost().host, readLastAssistant, loadConfig })(pi)).toThrow(/nope/);
+  expect(tools).toHaveLength(0);
 });
 
 it("rejects outside herdr", async () => {
@@ -262,31 +302,41 @@ it("launches a worker", async () => {
   tempDirs.add(dirname(agent.briefFile));
 });
 
-it("rejects the fifth active worker", async () => {
-  process.env.HERDR_ENV = "1";
-  const { agents, calls, host, tabs } = fakeHost();
-  const tool = loadTool(host);
+it("uses configured max concurrent", async () => {
+  writeConfig({ maxConcurrent: 2 });
+  const limited = loadTimedSession(async () => null);
 
-  for (let index = 1; index <= 4; index++) {
-    const result = await runTask(tool, `task ${index}`);
-    expect(result.isError).toBe(false);
-  }
+  const first = parseStarted(await runTask(limited.tool, "task 1"));
+  const second = parseStarted(await runTask(limited.tool, "task 2"));
+  tempDirs.add(dirname(first.sessionFile));
 
-  const result = await runTask(tool, "task 5");
+  expect(second.name).toBe("worker-2");
+
+  const rejected = await runTask(limited.tool, "task 3");
+
+  expect(rejected.isError).toBe(true);
+  expect(rejected.details).toMatchObject({ code: "max_concurrent" });
+  expect(firstText(rejected)).toContain("worker-2");
+
+  rmSync(configFile(), { force: true });
+
+  const defaults = loadTimedSession(async () => null);
+  await runTasks(defaults.tool, 3);
+});
+
+it("rejects the seventeenth active worker by default", async () => {
+  const { calls, tool } = loadTimedSession(async () => null);
+
+  await runTasks(tool, 16);
+
+  const result = await runTask(tool, "task 17");
+
   expect(result.isError).toBe(true);
   expect(result.details).toMatchObject({ code: "max_concurrent" });
   const text = firstText(result);
   expect(text.startsWith("max_concurrent: ")).toBe(true);
-  for (const name of ["worker-1", "worker-2", "worker-3", "worker-4"]) {
-    expect(text).toContain(name);
-  }
-  expect(tabs).toHaveLength(4);
-  expect(calls.filter((call) => call === "createTab")).toHaveLength(4);
-
-  const agent = agents[0];
-  if (agent) {
-    tempDirs.add(dirname(agent.briefFile));
-  }
+  expect(text).toContain("worker-16");
+  expect(calls.filter((call) => call === "createTab")).toHaveLength(16);
 });
 
 it("starts a fresh service for each session", async () => {
