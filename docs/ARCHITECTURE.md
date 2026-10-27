@@ -12,7 +12,7 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
 | extension | pi 工具、生命周期、消息信封、错误渲染、子侧 inbox 投递 | subagent、inbox；config/profile 类型、herdr/session 端口（type-only）；pi 类型 |
-| subagent | run 生命周期、profile 解析与 argv、并发、命名、结果轮询、结果内容/截断、send | herdr 端口、session 读取、profile、config、inbox、Node fs |
+| subagent | run 生命周期、profile 解析与 argv、并发、命名、结果轮询、结果内容/截断、send 重启 | herdr 端口、session 读取、profile、config、inbox、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
 | inbox | `<childSession>.inbox/` 的建目录、入队、按序投递、归档与删除 | Node fs / path / crypto |
@@ -35,15 +35,15 @@ subagent 负责槽位、`<profile>-<n>` 与 pane 标签、brief、串行轮询�
 
 profile 随后落成子进程参数；append / replace 另写身份文件。`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
 
-`send` 按名字查 live run，未知名字报 `unknown_agent` 并列出可用名字，命中就把消息写进该 run 的 inbox。
+`send` 按名字查记录：活着的子代理写 inbox；已退出的重启。done 后记录保留，`active()` 与 `maxConcurrent` 只数 live。
 
-最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
+最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令。
 
 ### herdr
 
-HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`renamePane`、`startAgent`、`getAgent`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）与 `resumeAgent`（同一 session 重启续聊）。
+HerdrHost 端口与唯一真实适配器：`createTab`、`renameTab`、`renamePane`、`startAgent`、`resumeAgent`、`getAgent`、`hasPane`、`closeTabIfOnlyPane`。v1 增加 `listAgents`：一次 `agent list` 覆盖所有 run，父侧不再逐 run `getAgent`；再加 `readAgent`（blocked 时读 pane 末尾）。
 
-CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时；profile 生成的参数由 subagent 传入，herdr 只拼接。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
+CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误码里 `agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在 `getAgent` 里转为 null，其余原样抛出；`hasPane` 查 `pane list` 的成员。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时；`resumeAgent` 只做 `agent start`，不投 brief。profile 生成的参数由 subagent 传入，herdr 只拼接。extension/subagent 只依赖端口，测试用 fake host；真实 CLI 字段由手工 E2E 校准。
 
 ### session
 
@@ -69,7 +69,7 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 
 ### v1 差异
 
-- 剩余差异：extension 的 bridge 监听与 `subagent_question` 转发；subagent 的 `<childSession>.exit` 回执与 send 续聊。
+- 剩余差异：extension 的 bridge 监听与 `subagent_question` 转发；subagent 的 `<childSession>.exit` 回执。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
 - 当前代码逐 run 调 `getAgent`，每 1s 轮询一次；v1 改为 `agent list` 快照，以 [v1 契约](specs/0001-v1-contract.md) 为准。
@@ -119,7 +119,7 @@ subagent -> inbox
 
 | seam | 用法 | 覆盖 |
 |---|---|---|
-| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、结果消息 |
+| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、send 续聊与重启、结果消息 |
 | loadConfig | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验、配置错误 |
 | loadProfiles | 临时 agent 目录、临时项目目录 + 真实 fs | frontmatter 与 body 拆分、字段校验、坏字段、受信项目的覆盖 |
 | SessionReader | 纯函数表驱动 | JSONL 解析边界 |

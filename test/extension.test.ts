@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,7 +11,13 @@ import {
   type SessionContext,
   type SubagentTool,
 } from "../src/extension/index.ts";
-import { type AgentSnapshot, type HerdrHost, HerdrHostError, type StartAgentInput } from "../src/herdr/index.ts";
+import {
+  type AgentSnapshot,
+  type HerdrHost,
+  HerdrHostError,
+  type ResumeAgentInput,
+  type StartAgentInput,
+} from "../src/herdr/index.ts";
 import { loadProfiles, agentDir as resolveAgentDir } from "../src/profile/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
 import type { RunStarted } from "../src/subagent/index.ts";
@@ -111,6 +117,9 @@ function fakeHost(
   const renamedPanes: Array<{ paneId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
   const inboxAtStart: boolean[] = [];
+  const resumed: ResumeAgentInput[] = [];
+  const resumeInboxAtStart: number[] = [];
+  let paneExists = true;
   let panes = 0;
   let starts = 0;
   let getAgentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
@@ -143,6 +152,15 @@ function fakeHost(
         throw error;
       }
     },
+    async resumeAgent(input) {
+      calls.push("resumeAgent");
+      resumed.push(input);
+      resumeInboxAtStart.push(pendingInbox(input.sessionFile));
+    },
+    async hasPane() {
+      calls.push("hasPane");
+      return paneExists;
+    },
     async getAgent(name) {
       calls.push("getAgent");
       return getAgentImpl(name);
@@ -163,8 +181,13 @@ function fakeHost(
     inboxAtStart,
     renamedPanes,
     renamedTabs,
+    resumeInboxAtStart,
+    resumed,
     setGetAgent(impl: (name: string) => Promise<AgentSnapshot | null>) {
       getAgentImpl = impl;
+    },
+    setPaneExists(value: boolean) {
+      paneExists = value;
     },
     tabs,
   };
@@ -233,6 +256,14 @@ function childSessionFile(): string {
   return join(agentDir, "child.jsonl");
 }
 
+function pendingInbox(sessionFile: string): number {
+  try {
+    return readdirSync(`${sessionFile}.inbox`).filter((name) => name.endsWith(".md")).length;
+  } catch {
+    return 0;
+  }
+}
+
 function writeInbox(sessionFile: string, files: Array<[name: string, text: string]>) {
   const dir = `${sessionFile}.inbox`;
   mkdirSync(dir, { recursive: true });
@@ -277,6 +308,36 @@ function runTask(tool: SubagentTool, task: string, profile = "worker") {
 
 function sendTask(tool: SubagentTool, name: string, message: string) {
   return tool.execute("call-2", { action: "send", name, message }, undefined, undefined, {} as never);
+}
+
+async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot } = {}) {
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  const profile = options.profile ?? "explore";
+  const fake = fakeHost();
+  let beforeResume: AgentSnapshot | null = { status: "idle", completionSeq: 1 };
+  let afterResume: AgentSnapshot | null = options.baseline ?? { status: "working", completionSeq: 1 };
+  let name = "";
+  fake.setGetAgent(async (agentName) => {
+    if (agentName !== name) {
+      return null;
+    }
+    return fake.resumed.length > 0 ? afterResume : beforeResume;
+  });
+  const session = loadSession(fake.host);
+  const started = parseStarted(await runTask(session.tool, "inspect the repo", profile));
+  name = started.name;
+  writeFileSync(started.sessionFile, `${assistantLine("old result")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+  beforeResume = null;
+  return {
+    ...session,
+    fake,
+    setAfterResume(snapshot: AgentSnapshot | null) {
+      afterResume = snapshot;
+    },
+    started,
+  };
 }
 
 function startRun(
@@ -605,7 +666,9 @@ it("labels the pane with the first task line", async () => {
 it("queues a message for a live child", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
-  const { tool } = loadSession(fakeHost().host);
+  const fake = fakeHost();
+  fake.setGetAgent(async () => ({ status: "working", completionSeq: 0 }));
+  const { tool } = loadSession(fake.host);
   const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
 
   const result = await sendTask(tool, "explore-1", "Also check the Windows branch.");
@@ -617,6 +680,161 @@ it("queues a message for a live child", async () => {
   const content = await readFile(join(`${started.sessionFile}.inbox`, files[0] ?? ""), "utf8");
   expect(content.startsWith("[from parent]")).toBe(true);
   expect(content).toContain("Also check the Windows branch.");
+});
+
+it("resumes the exited child in its pane", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, started, tool } = await exitedChild({ profile: "explore" });
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(false);
+  expect(firstText(result)).toBe(JSON.stringify({ state: "restarted", name: "explore-1", paneId: started.paneId }));
+  expect(fake.resumed).toHaveLength(1);
+  expect(fake.resumed[0]).toMatchObject({
+    name: "explore-1",
+    paneId: started.paneId,
+    sessionFile: started.sessionFile,
+  });
+  expect(fake.resumed[0]).not.toHaveProperty("briefFile");
+  expect(fake.resumeInboxAtStart).toEqual([0]);
+  expect(pendingInbox(started.sessionFile)).toBe(1);
+});
+
+it("opens a new tab when the pane is gone", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, started, tool } = await exitedChild({ profile: "explore" });
+  fake.setPaneExists(false);
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(false);
+  expect(JSON.parse(firstText(result))).toEqual({
+    state: "restarted",
+    name: "explore-1",
+    paneId: "w1:p2",
+  });
+  expect(fake.tabs.at(-1)).toEqual({ cwd: process.cwd(), label: "explore-1" });
+  expect(fake.resumed[0]?.paneId).toBe("w1:p2");
+  expect(fake.resumed[0]?.sessionFile).toBe(started.sessionFile);
+});
+
+it("refuses a dirty session", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, started, tool } = await exitedChild({ profile: "explore" });
+  writeFileSync(started.sessionFile, `${pendingAskLine()}\n`);
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "tail_dirty" });
+  expect(fake.resumed).toHaveLength(0);
+  expect(pendingInbox(started.sessionFile)).toBe(0);
+});
+
+it("refuses a missing session", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, started, tool } = await exitedChild({ profile: "explore" });
+  rmSync(started.sessionFile, { force: true });
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "session_missing" });
+  expect(fake.resumed).toHaveLength(0);
+  expect(pendingInbox(started.sessionFile)).toBe(0);
+});
+
+it("re-reads the profile on restart", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nOld body.\n");
+  const { fake, setAfterResume, started, tool } = await exitedChild({ profile: "explore" });
+
+  writeProfile("explore.md", "---\nmodel: new/model\n---\n\nNew body.\n");
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(false);
+  expect(fake.resumed[0]?.agentArgs).toEqual(expect.arrayContaining(["--model", "new/model"]));
+  expect(await readFile(`${started.sessionFile}.identity.md`, "utf8")).toBe("New body.");
+
+  rmSync(join(agentDir, "agents", "explore.md"), { force: true });
+  setAfterResume(null);
+
+  const missing = await sendTask(tool, "explore-1", "again");
+
+  expect(missing.isError).toBe(true);
+  expect(missing.details).toMatchObject({ code: "unknown_profile" });
+  expect(fake.resumed).toHaveLength(1);
+});
+
+it("delivers only the result after the restart", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { sent, setAfterResume, started, tool } = await exitedChild({
+    profile: "explore",
+    baseline: { status: "idle", completionSeq: 3 },
+  });
+
+  expect(sent).toHaveLength(1);
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(false);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+
+  setAfterResume({ status: "idle", completionSeq: 4 });
+  writeFileSync(started.sessionFile, `${assistantLine("new result")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+  expect(sent[1]?.message.content).toContain("new result");
+  expect(sent[1]?.message.content).not.toContain("old result");
+
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(sent).toHaveLength(2);
+});
+
+it("keeps finished runs for send", async () => {
+  writeConfig({ maxConcurrent: 1 });
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, sent, setAfterResume, started, tool } = await exitedChild({ profile: "explore" });
+
+  const restarted = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(restarted.isError).toBe(false);
+  expect(JSON.parse(firstText(restarted))).toMatchObject({ state: "restarted", name: "explore-1" });
+  expect(fake.resumed).toHaveLength(1);
+
+  setAfterResume({ status: "idle", completionSeq: 2 });
+  writeFileSync(started.sessionFile, `${assistantLine("second result")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+
+  const next = await runTask(tool, "next task", "explore");
+
+  expect(next.isError).toBe(false);
+  expect(parseStarted(next).name).toBe("explore-2");
+});
+
+it("re-arms a finished child that is still alive", async () => {
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const fake = fakeHost({ closeTab: () => "kept" });
+  fake.setGetAgent(async () => ({ status: "idle", completionSeq: 1 }));
+  const { tool } = loadSession(fake.host);
+  const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
+  writeFileSync(started.sessionFile, `${assistantLine("old result")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(result.isError).toBe(false);
+  expect(firstText(result)).toBe('{"state":"sent","name":"explore-1"}');
+  expect(fake.resumed).toHaveLength(0);
+  expect(pendingInbox(started.sessionFile)).toBe(1);
 });
 
 it("rejects unknown agent", async () => {

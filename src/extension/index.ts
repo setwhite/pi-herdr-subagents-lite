@@ -9,7 +9,7 @@ import {
   createSubagentService,
   profileLabel,
   type RunStarted,
-  type SentResult,
+  type SendResult,
   type SubagentResult,
   type SubagentService,
   ToolError,
@@ -125,7 +125,7 @@ function started(started: RunStarted) {
   };
 }
 
-function sent(result: SentResult) {
+function sent(result: SendResult) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result) }],
     details: result,

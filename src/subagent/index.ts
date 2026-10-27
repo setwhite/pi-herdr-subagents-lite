@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { dataDir } from "../config/index.ts";
@@ -31,6 +32,14 @@ export interface SentResult {
   state: "sent";
   name: string;
 }
+
+export interface RestartedResult {
+  state: "restarted";
+  name: string;
+  paneId: string;
+}
+
+export type SendResult = SentResult | RestartedResult;
 
 export interface DoneResult {
   state: "done";
@@ -66,7 +75,7 @@ export class ToolError extends Error {
 
 export interface SubagentService {
   run(profile: string, task: string): Promise<RunStarted>;
-  send(name: string, message: string): Promise<SentResult>;
+  send(name: string, message: string): Promise<SendResult>;
   onResult(handler: ResultHandler): void;
   shutdown(): void;
   active(): string[];
@@ -80,15 +89,17 @@ export interface SubagentServiceDeps {
   maxResultChars: number;
 }
 
-interface ActiveRun {
+interface RunRecord {
   name: string;
-  profile: Profile;
+  profileName: string;
   paneId: string;
+  paneLabel: string;
   sessionFile: string;
   tabId: string;
+  lastHandledSeq: number;
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;
-  finished: boolean;
+  live: boolean;
 }
 
 function profileSlug(name: string): string {
@@ -119,6 +130,10 @@ function paneLabel(task: string): string {
     .replace(/\s+/g, " ")
     .trim();
   return leadingChars(text, PANE_LABEL_CHARS);
+}
+
+function inboxMessage(text: string): string {
+  return `[from parent]\n\n${text}\n`;
 }
 
 function resultText(text: string, limit: number, sessionFile: string): string {
@@ -178,14 +193,18 @@ function resolveProfile({ profiles, problems }: ProfileCatalog, name: string): P
   throw new ToolError("unknown_profile", `unknown profile "${name}"; available: ${available}`);
 }
 
-function spawnFailed(error: unknown, paneId: string | undefined): ToolError {
+function profileCwd(profile: Profile): string {
+  return profile.cwd === undefined ? process.cwd() : resolve(process.cwd(), profile.cwd);
+}
+
+function spawnFailed(error: unknown, paneId: string | undefined, created = true): ToolError {
   const detail = error instanceof Error ? error.message : String(error);
-  const created = paneId ? `; pane ${paneId} was created` : "";
+  const createdNote = created && paneId ? `; pane ${paneId} was created` : "";
   const trust =
     error instanceof HerdrHostError && error.code === "agent_not_ready"
       ? " and is likely waiting at a trust dialog; answer it in that pane, then run again"
       : "";
-  return new ToolError("spawn_failed", `${detail}${created}${trust}`);
+  return new ToolError("spawn_failed", `${detail}${createdNote}${trust}`);
 }
 
 export function createSubagentService({
@@ -195,7 +214,7 @@ export function createSubagentService({
   maxConcurrent,
   maxResultChars,
 }: SubagentServiceDeps): SubagentService {
-  const runs: ActiveRun[] = [];
+  const runs: RunRecord[] = [];
   const sessionsDir = join(dataDir(agentDir()), "sessions");
   const nameCounters = new Map<string, number>();
   let resultHandler: ResultHandler | undefined;
@@ -206,37 +225,42 @@ export function createSubagentService({
     nameCounters.set(slug, number + 1);
     return `${slug}-${number}`;
   };
-  const active = () => runs.map((run) => run.name);
+  const active = () => runs.filter((run) => run.live).map((run) => run.name);
+  const available = () => runs.map((run) => run.name);
 
-  function clearTimer(run: ActiveRun) {
+  function clearTimer(run: RunRecord) {
     if (run.timer !== undefined) {
       clearTimeout(run.timer);
       run.timer = undefined;
     }
   }
 
-  function release(run: ActiveRun) {
-    run.finished = true;
+  function settle(run: RunRecord) {
+    run.live = false;
     clearTimer(run);
+  }
+
+  function release(run: RunRecord) {
+    settle(run);
     const index = runs.indexOf(run);
     if (index >= 0) {
       runs.splice(index, 1);
     }
   }
 
-  function schedule(run: ActiveRun, delayMs: number, task: () => void) {
-    if (run.finished) {
+  function schedule(run: RunRecord, delayMs: number, task: () => void) {
+    if (!run.live) {
       return;
     }
     run.timer = setTimeout(task, delayMs);
     run.timer.unref?.();
   }
 
-  function schedulePoll(run: ActiveRun) {
+  function schedulePoll(run: RunRecord) {
     schedule(run, POLL_INTERVAL_MS, () => void poll(run));
   }
 
-  function unknown(run: ActiveRun, reason: UnknownReason): UnknownResult {
+  function unknown(run: RunRecord, reason: UnknownReason): UnknownResult {
     return {
       state: "unknown",
       name: run.name,
@@ -246,7 +270,7 @@ export function createSubagentService({
     };
   }
 
-  async function finish(run: ActiveRun, result: SubagentResult) {
+  async function finish(run: RunRecord, result: SubagentResult) {
     try {
       await resultHandler?.(result);
       if (result.state === "done") {
@@ -257,13 +281,20 @@ export function createSubagentService({
         }
       }
     } finally {
-      release(run);
+      settle(run);
     }
   }
 
-  async function poll(run: ActiveRun) {
+  async function createPane(run: RunRecord, cwd: string, label: string) {
+    const tab = await host.createTab({ cwd, label: run.name });
+    run.tabId = tab.tabId;
+    run.paneId = tab.paneId;
+    await host.renamePane({ paneId: tab.paneId, label });
+  }
+
+  async function poll(run: RunRecord) {
     run.timer = undefined;
-    if (run.finished) {
+    if (!run.live) {
       return;
     }
 
@@ -271,7 +302,7 @@ export function createSubagentService({
     try {
       snapshot = await host.getAgent(run.name);
     } catch {
-      if (run.finished) {
+      if (!run.live) {
         return;
       }
       run.pollFailures += 1;
@@ -282,7 +313,7 @@ export function createSubagentService({
       schedulePoll(run);
       return;
     }
-    if (run.finished) {
+    if (!run.live) {
       return;
     }
     run.pollFailures = 0;
@@ -292,17 +323,17 @@ export function createSubagentService({
       return;
     }
 
-    if (snapshot.completionSeq > 0 && (snapshot.status === "idle" || snapshot.status === "done")) {
-      await readResult(run, 1);
+    if (snapshot.completionSeq > run.lastHandledSeq && (snapshot.status === "idle" || snapshot.status === "done")) {
+      await readResult(run, snapshot.completionSeq, 1);
       return;
     }
 
     schedulePoll(run);
   }
 
-  async function readResult(run: ActiveRun, attempt: number) {
+  async function readResult(run: RunRecord, seq: number, attempt: number) {
     run.timer = undefined;
-    if (run.finished) {
+    if (!run.live) {
       return;
     }
 
@@ -312,6 +343,7 @@ export function createSubagentService({
       return;
     }
     if (snapshot.text !== null) {
+      run.lastHandledSeq = seq;
       await finish(run, {
         state: "done",
         name: run.name,
@@ -323,17 +355,18 @@ export function createSubagentService({
     }
 
     if (attempt >= READ_ATTEMPTS) {
+      run.lastHandledSeq = seq;
       await finish(run, unknown(run, "no_result"));
       return;
     }
 
-    schedule(run, READ_RETRY_DELAY_MS, () => void readResult(run, attempt + 1));
+    schedule(run, READ_RETRY_DELAY_MS, () => void readResult(run, seq, attempt + 1));
   }
 
   return {
     async run(profileName, task) {
       const profile = resolveProfile(loadProfiles(), profileName);
-      if (runs.length >= maxConcurrent) {
+      if (active().length >= maxConcurrent) {
         const names = active().join(", ");
         throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);
       }
@@ -349,24 +382,24 @@ export function createSubagentService({
       };
       const name = nextName(profileName);
       let current = files(name);
-      const run: ActiveRun = {
+      const cwd = profileCwd(profile);
+      const run: RunRecord = {
         name,
-        profile,
+        profileName: profile.name,
         paneId: "",
+        paneLabel: "",
         sessionFile: current.sessionFile,
         tabId: "",
+        lastHandledSeq: 0,
         pollFailures: 0,
-        finished: false,
+        live: true,
       };
       // Reserve the slot before the first await: concurrent run() calls must see it.
       runs.push(run);
 
       try {
-        const cwd = profile.cwd === undefined ? process.cwd() : resolve(process.cwd(), profile.cwd);
-        const tab = await host.createTab({ cwd, label: run.name });
-        run.tabId = tab.tabId;
-        run.paneId = tab.paneId;
-        await host.renamePane({ paneId: tab.paneId, label: paneLabel(task) || run.name });
+        run.paneLabel = paneLabel(task) || run.name;
+        await createPane(run, cwd, run.paneLabel);
         await mkdir(sessionsDir, { recursive: true });
 
         for (let retry = 1; ; retry++) {
@@ -378,7 +411,7 @@ export function createSubagentService({
           try {
             await host.startAgent({
               name: run.name,
-              paneId: tab.paneId,
+              paneId: run.paneId,
               sessionFile: current.sessionFile,
               briefFile: current.briefFile,
               agentArgs: agentArgs(profile, current.identityFile),
@@ -400,7 +433,7 @@ export function createSubagentService({
               );
             }
             run.name = nextName(profileName);
-            await host.renameTab({ tabId: tab.tabId, label: run.name });
+            await host.renameTab({ tabId: run.tabId, label: run.name });
             current = files(run.name);
             run.sessionFile = current.sessionFile;
           }
@@ -426,12 +459,75 @@ export function createSubagentService({
     async send(name, message) {
       const run = runs.find((candidate) => candidate.name === name);
       if (!run) {
-        const names = active();
-        const available = names.length === 0 ? "none" : names.join(", ");
-        throw new ToolError("unknown_agent", `unknown agent "${name}"; available: ${available}`);
+        const names = available();
+        const list = names.length === 0 ? "none" : names.join(", ");
+        throw new ToolError("unknown_agent", `unknown agent "${name}"; available: ${list}`);
       }
-      await enqueue(run.sessionFile, `[from parent]\n\n${message}\n`);
-      return { state: "sent", name };
+
+      const snapshot = await host.getAgent(name);
+      if (snapshot) {
+        if (!run.live) {
+          run.lastHandledSeq = snapshot.completionSeq;
+          run.live = true;
+          run.pollFailures = 0;
+          schedulePoll(run);
+        }
+        await enqueue(run.sessionFile, inboxMessage(message));
+        return { state: "sent", name };
+      }
+
+      if (!existsSync(run.sessionFile)) {
+        throw new ToolError(
+          "session_missing",
+          `child session "${run.sessionFile}" for "${name}" is missing; start a new run`,
+        );
+      }
+      if (readLastAssistant(run.sessionFile).pendingToolCall) {
+        throw new ToolError(
+          "tail_dirty",
+          `child session "${run.sessionFile}" ends with an unfinished tool call; not restarting "${name}"`,
+        );
+      }
+
+      const profile = resolveProfile(loadProfiles(), run.profileName);
+      const cwd = profileCwd(profile);
+      const identityFile = `${run.sessionFile}.identity.md`;
+      const previousPaneId = run.paneId;
+      try {
+        if (!(await host.hasPane(run.paneId))) {
+          await createPane(run, cwd, run.paneLabel || run.name);
+        }
+        if (profile.systemPrompt !== "task") {
+          await writeFile(identityFile, profile.body, "utf8");
+        }
+        createInbox(run.sessionFile);
+      } catch (error) {
+        throw spawnFailed(error, run.paneId, run.paneId !== previousPaneId);
+      }
+
+      clearTimer(run);
+      try {
+        await host.resumeAgent({
+          name: run.name,
+          paneId: run.paneId,
+          sessionFile: run.sessionFile,
+          agentArgs: agentArgs(profile, identityFile),
+        });
+        const baseline = await host.getAgent(run.name);
+        if (!baseline) {
+          throw new Error(`agent "${run.name}" did not register after resume`);
+        }
+        run.lastHandledSeq = baseline.completionSeq;
+      } catch (error) {
+        settle(run);
+        throw spawnFailed(error, run.paneId, run.paneId !== previousPaneId);
+      }
+
+      run.live = true;
+      run.pollFailures = 0;
+      schedulePoll(run);
+      await enqueue(run.sessionFile, inboxMessage(message));
+      return { state: "restarted", name: run.name, paneId: run.paneId };
     },
 
     onResult(handler) {
@@ -440,8 +536,7 @@ export function createSubagentService({
 
     shutdown() {
       for (const run of runs) {
-        run.finished = true;
-        clearTimer(run);
+        settle(run);
       }
       runs.length = 0;
     },

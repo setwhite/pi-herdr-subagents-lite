@@ -11,9 +11,11 @@ export interface StartAgentInput {
   name: string;
   paneId: string;
   sessionFile: string;
-  briefFile: string;
   agentArgs: string[];
+  briefFile: string;
 }
+
+export type ResumeAgentInput = Omit<StartAgentInput, "briefFile">;
 
 export interface AgentSnapshot {
   status: AgentStatus;
@@ -40,6 +42,8 @@ export interface HerdrHost {
   renameTab(input: RenameTabInput): Promise<void>;
   renamePane(input: RenamePaneInput): Promise<void>;
   startAgent(input: StartAgentInput): Promise<void>;
+  resumeAgent(input: ResumeAgentInput): Promise<void>;
+  hasPane(paneId: string): Promise<boolean>;
   getAgent(name: string): Promise<AgentSnapshot | null>;
   closeTabIfOnlyPane(input: CloseTabInput): Promise<"closed" | "kept">;
 }
@@ -93,6 +97,24 @@ function parseHerdrError(text: string): HerdrErrorBody | null {
   } catch {
     return null;
   }
+}
+
+function agentStartCommand(input: ResumeAgentInput): string[] {
+  return [
+    "agent",
+    "start",
+    input.name,
+    "--kind",
+    "pi",
+    "--pane",
+    input.paneId,
+    "--timeout",
+    "30000",
+    "--",
+    "--session",
+    input.sessionFile,
+    ...input.agentArgs,
+  ];
 }
 
 function runHerdr(args: string[]): Promise<string> {
@@ -157,23 +179,18 @@ export function createHerdrHost(): HerdrHost {
       await execHerdrJson(["pane", "rename", paneId, label]);
     },
 
-    async startAgent({ name, paneId, sessionFile, briefFile, agentArgs }) {
-      await execHerdrJson([
-        "agent",
-        "start",
-        name,
-        "--kind",
-        "pi",
-        "--pane",
-        paneId,
-        "--timeout",
-        "30000",
-        "--",
-        "--session",
-        sessionFile,
-        ...agentArgs,
-      ]);
+    async startAgent({ name, briefFile, ...input }) {
+      await execHerdrJson(agentStartCommand({ name, ...input }));
       await execHerdrJson(["agent", "prompt", name, `@${briefFile}`]);
+    },
+
+    async resumeAgent(input) {
+      await execHerdrJson(agentStartCommand(input));
+    },
+
+    async hasPane(paneId) {
+      const result = await execHerdrJson<{ panes: PaneInfo[] }>(["pane", "list"]);
+      return result.panes.some((pane) => pane.pane_id === paneId);
     },
 
     async getAgent(name) {
