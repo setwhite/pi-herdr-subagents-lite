@@ -8,7 +8,7 @@ export interface DoneResult {
   paneId: string;
 }
 
-export type UnknownReason = "agent_missing" | "poll_failed" | "no_result" | "close_failed";
+export type UnknownReason = "poll_failed" | "no_result" | "close_failed" | "quitted" | "pane_exited";
 
 export interface UnknownResult {
   state: "unknown";

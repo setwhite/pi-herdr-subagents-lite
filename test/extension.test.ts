@@ -20,7 +20,7 @@ import {
 } from "../src/herdr/index.ts";
 import { loadProfiles, agentDir as resolveAgentDir } from "../src/profile/index.ts";
 import type { RunStarted } from "../src/run/index.ts";
-import { readLastAssistant, writeExitReceipt } from "../src/session-file/index.ts";
+import { readExitReceipt, readLastAssistant, writeExitReceipt } from "../src/session-file/index.ts";
 
 interface SentMessage {
   message: { customType: string; content: string; display: boolean };
@@ -278,6 +278,7 @@ function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
   createExtension({
     host,
     readLastAssistant,
+    readExitReceipt,
     loadConfig: () => loadConfig(resolveAgentDir()),
     loadProfiles,
     writeExitReceipt,
@@ -1423,7 +1424,33 @@ it("releases the slot after done", async () => {
   expect(parseStarted(fifth).name).toBe("worker-5");
 });
 
-it("reports missing agent as unknown", async () => {
+it("delivers a done result from the exit receipt", async () => {
+  const { sent, tool } = loadTimedSession(async () => null);
+
+  const started = parseStarted(await runTask(tool, "finished task"));
+  writeFileSync(started.sessionFile, `${assistantLine("final answer")}\n`);
+  writeExitReceipt(started.sessionFile, "quit");
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(sent[0]?.message.content).toContain("final answer");
+});
+
+it("reports a quitted run when the receipt has no final answer", async () => {
+  const { sent, tool } = loadTimedSession(async () => null);
+
+  const started = parseStarted(await runTask(tool, "vanished task"));
+  writeExitReceipt(started.sessionFile, "quit");
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("unknown (quitted)");
+});
+
+it("reports pane exited without a receipt", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => null);
 
   const started = parseStarted(await runTask(tool, "vanished task"));
@@ -1432,7 +1459,7 @@ it("reports missing agent as unknown", async () => {
 
   const content = sent[0]?.message.content ?? "";
   expect(sent).toHaveLength(1);
-  expect(content).toContain("unknown (agent_missing)");
+  expect(content).toContain("unknown (pane_exited)");
   expect(content).toContain(`Session: ${started.sessionFile}`);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
@@ -1441,6 +1468,23 @@ it("reports missing agent as unknown", async () => {
 
   const next = await runTask(tool, "next task");
   expect(next.isError).toBe(false);
+});
+
+it("does not repeat a delivered run", async () => {
+  let snapshot: AgentSnapshot | null = { status: "idle", completionSeq: 1 };
+  const { sent, tool } = loadTimedSession(async () => snapshot);
+
+  const started = parseStarted(await runTask(tool, "say hello"));
+  writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+
+  snapshot = null;
+  writeExitReceipt(started.sessionFile, "quit");
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
 });
 
 it("reports three consecutive poll failures", async () => {

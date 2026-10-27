@@ -115,7 +115,7 @@ taskkill //F //PID "$PID"
 herdr --session herdr-e2e tab list
 ~~~
 
-预期：父会话收到一条 `[subagent explore-N] unknown (agent_missing)`，含 `Session:` 路径；worker tab 仍在，不自动关闭。
+预期：父会话收到一条 `[subagent explore-N] unknown (pane_exited)`，含 `Session:` 路径；worker tab 仍在，不自动关闭。
 
 ## 5. 父 /new
 

@@ -58,6 +58,7 @@ export async function start(state: RunState, profileName: string, task: string):
     tabId: "",
     autoExit: profile.autoExit,
     lastHandledSeq: 0,
+    lastDeliveredText: null,
     pollFailures: 0,
     live: true,
   };

@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { parseLastAssistant, type SessionSnapshot } from "./jsonl.ts";
 
-export { type ExitReceiptWriter, writeExitReceipt } from "./receipt.ts";
+export {
+  type ExitReceipt,
+  type ExitReceiptReader,
+  type ExitReceiptWriter,
+  readExitReceipt,
+  writeExitReceipt,
+} from "./receipt.ts";
 
 export type SessionReader = (path: string) => SessionSnapshot;
 

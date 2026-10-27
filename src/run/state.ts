@@ -1,11 +1,12 @@
 import type { HerdrHost } from "../herdr/index.ts";
 import type { ProfileCatalog } from "../profile/index.ts";
-import type { SessionReader } from "../session-file/index.ts";
+import type { ExitReceiptReader, SessionReader } from "../session-file/index.ts";
 import type { ResultHandler } from "./result.ts";
 
 export interface RunServiceDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  readExitReceipt: ExitReceiptReader;
   loadProfiles: () => ProfileCatalog;
   maxConcurrent: number;
   maxResultChars: number;
@@ -20,6 +21,7 @@ export interface RunRecord {
   tabId: string;
   autoExit: boolean;
   lastHandledSeq: number;
+  lastDeliveredText: string | null;
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;
   live: boolean;

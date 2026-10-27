@@ -1,6 +1,6 @@
 import type { AgentSnapshot } from "../herdr/index.ts";
 import { closeTab, shouldClose } from "./close.ts";
-import type { RunResult, UnknownReason, UnknownResult } from "./result.ts";
+import type { DoneResult, RunResult, UnknownReason, UnknownResult } from "./result.ts";
 import { resultText } from "./result.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
@@ -40,7 +40,7 @@ async function poll(state: RunState, run: RunRecord) {
   run.pollFailures = 0;
 
   if (!snapshot) {
-    await finish(state, run, unknownResult(run, "agent_missing"));
+    await exited(state, run);
     return;
   }
 
@@ -65,13 +65,8 @@ async function readResult(state: RunState, run: RunRecord, seq: number, attempt:
   }
   if (snapshot.text !== null) {
     run.lastHandledSeq = seq;
-    await finish(state, run, {
-      state: "done",
-      name: run.name,
-      text: resultText(snapshot.text, state.maxResultChars, run.sessionFile),
-      sessionFile: run.sessionFile,
-      paneId: run.paneId,
-    });
+    run.lastDeliveredText = snapshot.text;
+    await finish(state, run, doneResult(state, run, snapshot.text));
     return;
   }
 
@@ -82,6 +77,31 @@ async function readResult(state: RunState, run: RunRecord, seq: number, attempt:
   }
 
   state.schedule(run, READ_RETRY_DELAY_MS, () => void readResult(state, run, seq, attempt + 1));
+}
+
+async function exited(state: RunState, run: RunRecord): Promise<void> {
+  const tail = state.readLastAssistant(run.sessionFile);
+  const text = tail.pendingToolCall ? null : tail.text;
+  if (text !== null) {
+    if (text !== run.lastDeliveredText) {
+      run.lastDeliveredText = text;
+      await finish(state, run, doneResult(state, run, text));
+    }
+  } else if (run.lastDeliveredText === null) {
+    const reason = state.readExitReceipt(run.sessionFile) ? "quitted" : "pane_exited";
+    await finish(state, run, unknownResult(run, reason));
+  }
+  state.settle(run);
+}
+
+function doneResult(state: RunState, run: RunRecord, text: string): DoneResult {
+  return {
+    state: "done",
+    name: run.name,
+    text: resultText(text, state.maxResultChars, run.sessionFile),
+    sessionFile: run.sessionFile,
+    paneId: run.paneId,
+  };
 }
 
 function unknownResult(run: RunRecord, reason: UnknownReason): UnknownResult {

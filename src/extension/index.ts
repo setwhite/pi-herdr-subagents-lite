@@ -4,13 +4,14 @@ import type { HerdrHost } from "../herdr/index.ts";
 import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import { createRunService, type RunService } from "../run/index.ts";
-import type { ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
+import type { ExitReceiptReader, ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
 import { createTool, type ResultMessage, type SubagentTool, sendResult } from "../tool/index.ts";
 import { watchAutoExit } from "./auto-exit.ts";
 
 export interface ExtensionDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  readExitReceipt: ExitReceiptReader;
   writeExitReceipt: ExitReceiptWriter;
   loadConfig: () => Config;
   loadProfiles: (sources: ProfileSources) => ProfileCatalog;
@@ -89,6 +90,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       service = createRunService({
         host: deps.host,
         readLastAssistant: deps.readLastAssistant,
+        readExitReceipt: deps.readExitReceipt,
         loadProfiles: () => deps.loadProfiles(sources),
         maxConcurrent: config.maxConcurrent,
         maxResultChars: config.maxResultChars,
