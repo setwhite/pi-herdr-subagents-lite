@@ -43,7 +43,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | 子进程命令 | PATH 里的 `pi`，基础参数 `--session <childSession>`；其余由 profile 生成 |
 | blocked 通知 | `notification show --sound request`（仅 blocked） |
 | blocked 事件源 | pi `ui_prompt_start` / `ui_prompt_end` |
-| 退出回执 | `<childSession>.exit`；子进程 shutdown 时写 `{type, summary, errorMessage}` |
+| 退出回执 | `<childSession>.exit`；子进程 `session_shutdown` 时写 `{reason}`；只有 `<childSession>.inbox/` 存在时才写 |
 | 问题观察 | 父侧在 blocked 时读 `herdr agent read <name> --lines 40 --format text` |
 
 ## 2. Profile
@@ -60,7 +60,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
 | `tools` | string | pi 默认 | 纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = `--no-skills`，不加载 skill；非空列表 = `--no-skills` + 每项解析为 `<agent-dir>/skills/<name>` 并用 `--skill` 传入，只加载指定项；列表项是名字，不带 `+` / `-` |
-| `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动 |
+| `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动；与父 cwd 不同时在新 workspace 里开 tab，相同则在同 workspace 开新 tab |
 | `system-prompt` | string | append | append / replace / task；省略 = append，见 [PROMPTS](../PROMPTS.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
@@ -202,19 +202,20 @@ Full result: <childSession>.result-3.md
 ...
 ~~~
 
-- 子代理死亡时先读 `<childSession>.exit`：
+- 子代理死亡时先读 `<childSession>.exit`（只有 `{ reason }`）：
 
-| `type` | 投递 |
+| 回执 | 投递 |
 |---|---|
-| `done` | `done`，正文取 `summary` |
-| `error` | `unknown (error)`，附 `errorMessage` |
-| `quit` | `unknown (quitted)`，正文取 `summary` |
-| 没有文件 | 退回读 session 尾部：最后一条 assistant 有文本且没有未完成 toolCall → `done`，否则 `unknown (pane exited)` |
+| 有回执，session 尾部有最终文本且没有未完成 toolCall | `done`，正文取该文本 |
+| 有回执，尾部没有可用文本 | `unknown (quitted)` |
+| 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane exited)` |
+
+- 已经投递过的 run 不再因回执重复投递。
 
 ~~~text
-[subagent explore-1] unknown (error)
+[subagent explore-1] unknown (pane exited)
 
-The subagent stopped with an error before reporting a result: <errorMessage>
+The subagent stopped before reporting a result.
 Its session is saved at <childSession>.
 ~~~
 
