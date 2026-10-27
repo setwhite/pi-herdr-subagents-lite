@@ -69,7 +69,8 @@ herdr --session herdr-e2e tab list
 - 父会话先收到 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`，其中 sessionFile 是 `$AGENT_DIR/pi-herdr-subagents-lite/sessions/explore-1-<runId>.jsonl`，brief 与身份文件是同前缀的兄弟文件；
 - 出现一个新的 `explore-1` tab，里面有子 pi，pane 标签是任务首行；
 - 父会话收到一条 `[subagent explore-1] done`，内容含 README 的一级标题；
-- 结果投递后 worker tab 关闭，`agent list` 里没有 `explore-1`。
+- 结果投递后 worker tab 仍在（`auto-exit` 默认 false），`agent list` 里仍有 `explore-1`，状态 idle；此时 `send` 直接写 inbox，不重启。
+- 自退变体：profile 加 `auto-exit: true` 重跑本节，done 后 tab 消失、`agent list` 里没有 `explore-1`。
 
 反问验证（如果子环境有 `ask_user_question`）：派一个会提问的短任务；问题只出现在子 pane，父会话不转发、不回答；人在子 pane 回答后，父会话只收到最终 `done`。
 
@@ -148,7 +149,7 @@ until [ "$(rg -c '"state":"running"' "$SESSION" || echo 0)" -gt "$RUN_BEFORE" ];
 NAME=$(node -e 'const fs=require("fs");let name="";for(const l of fs.readFileSync(process.argv[1],"utf8").split("\n")){try{const j=JSON.parse(l);const d=j.message?.details??j.details;if(d?.state==="running"&&d.name)name=d.name}catch{}}console.log(name)' "$SESSION")
 test -n "$NAME"
 
-# worker tab 出现后立即取 tab/pane，并在第一条 done 前 split，避免单 pane tab 被 close
+# worker tab 出现后立即取 tab/pane；split 成两个 pane，验证多 pane 的 tab 不被关
 WORKER_TAB=""
 for i in $(seq 1 60); do
   WORKER_TAB=$(herdr --session herdr-e2e tab list \
