@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -20,7 +20,7 @@ import {
 } from "../src/herdr/index.ts";
 import { loadProfiles, agentDir as resolveAgentDir } from "../src/profile/index.ts";
 import type { RunStarted } from "../src/run/index.ts";
-import { readLastAssistant } from "../src/session-file/index.ts";
+import { readLastAssistant, writeExitReceipt } from "../src/session-file/index.ts";
 
 interface SentMessage {
   message: { customType: string; content: string; display: boolean };
@@ -42,7 +42,8 @@ type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => vo
 function fakePi(events: string[] = []) {
   const tools: SubagentTool[] = [];
   const startHandlers: SessionStartHandler[] = [];
-  const shutdownHandlers: Array<() => void> = [];
+  const shutdownHandlers: Array<(event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void> =
+    [];
   const settledHandlers: Array<(event: { type: "agent_settled" }, ctx: SessionContext) => void> = [];
   const promptStartHandlers: Array<() => void> = [];
   const promptEndHandlers: Array<() => void> = [];
@@ -55,7 +56,11 @@ function fakePi(events: string[] = []) {
   const pi: ExtensionRegistrar = {
     on(
       event: "session_start" | "session_shutdown" | "agent_settled" | "ui_prompt_start" | "ui_prompt_end",
-      handler: SessionStartHandler | ((event: { type: "agent_settled" }, ctx: SessionContext) => void) | (() => void),
+      handler:
+        | SessionStartHandler
+        | ((event: { type: "agent_settled" }, ctx: SessionContext) => void)
+        | ((event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void)
+        | (() => void),
     ) {
       if (event === "session_start") {
         startHandlers.push(handler as SessionStartHandler);
@@ -73,7 +78,9 @@ function fakePi(events: string[] = []) {
         promptEndHandlers.push(handler as () => void);
         return;
       }
-      shutdownHandlers.push(handler as () => void);
+      shutdownHandlers.push(
+        handler as (event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void,
+      );
     },
     registerTool(tool) {
       tools.push(tool);
@@ -108,9 +115,12 @@ function fakePi(events: string[] = []) {
       handler({ type: "session_start", reason: "startup" }, session);
     }
   };
-  const shutdownSession = () => {
+  const shutdownSession = (reason = "quit") => {
+    if (!currentSession) {
+      throw new Error("no session");
+    }
     for (const handler of shutdownHandlers) {
-      handler();
+      handler({ type: "session_shutdown", reason }, currentSession);
     }
   };
   const settle = () => {
@@ -265,7 +275,13 @@ function writeProjectProfile(fileName: string, content: string) {
 }
 
 function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
-  createExtension({ host, readLastAssistant, loadConfig: () => loadConfig(resolveAgentDir()), loadProfiles })(pi);
+  createExtension({
+    host,
+    readLastAssistant,
+    loadConfig: () => loadConfig(resolveAgentDir()),
+    loadProfiles,
+    writeExitReceipt,
+  })(pi);
 }
 
 function loadSession(host: HerdrHost, events: string[] = [], ctx?: Partial<SessionContext>) {
@@ -1617,6 +1633,25 @@ it("does not shut down without the env", async () => {
   child.fake.settle();
 
   expect(child.fake.shutdowns).toBe(0);
+});
+
+it("writes an exit receipt for a child session", async () => {
+  const sessionFile = childSessionFile();
+  writeInbox(sessionFile, [["a.md", "queued"]]);
+  const child = loadChild(sessionFile);
+
+  child.shutdownSession("quit");
+
+  expect(JSON.parse(readFileSync(`${sessionFile}.exit`, "utf8"))).toEqual({ reason: "quit" });
+});
+
+it("skips the receipt when there is no inbox", async () => {
+  const sessionFile = childSessionFile();
+  const child = loadChild(sessionFile);
+
+  child.shutdownSession("quit");
+
+  expect(existsSync(`${sessionFile}.exit`)).toBe(false);
 });
 
 it("delivers inbox messages in order", async () => {

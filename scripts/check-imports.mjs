@@ -35,6 +35,7 @@ const SINGLE_IMPORT = [
       "src/inbox/index.ts",
       "src/profile/layers.ts",
       "src/session-file/index.ts",
+      "src/session-file/receipt.ts",
       "src/run/start.ts",
       "src/run/send.ts",
     ],

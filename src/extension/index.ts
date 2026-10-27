@@ -1,15 +1,17 @@
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import type { Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
-import { drain, hasInbox, inboxCount, pumpInbox } from "../inbox/index.ts";
+import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
-import { AUTO_EXIT_ENV, createRunService, type RunService } from "../run/index.ts";
-import type { SessionReader } from "../session-file/index.ts";
+import { createRunService, type RunService } from "../run/index.ts";
+import type { ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
 import { createTool, type ResultMessage, type SubagentTool, sendResult } from "../tool/index.ts";
+import { watchAutoExit } from "./auto-exit.ts";
 
 export interface ExtensionDeps {
   host: HerdrHost;
   readLastAssistant: SessionReader;
+  writeExitReceipt: ExitReceiptWriter;
   loadConfig: () => Config;
   loadProfiles: (sources: ProfileSources) => ProfileCatalog;
 }
@@ -27,10 +29,11 @@ export type { SubagentTool };
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
 type SettledHandler = (event: { type: "agent_settled" }, ctx: SessionContext) => void;
+type ShutdownHandler = (event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void;
 
 export interface ExtensionRegistrar {
   on(event: "session_start", handler: SessionStartHandler): void;
-  on(event: "session_shutdown", handler: () => void): void;
+  on(event: "session_shutdown", handler: ShutdownHandler): void;
   on(event: "agent_settled", handler: SettledHandler): void;
   on(event: "ui_prompt_start" | "ui_prompt_end", handler: () => void): void;
   registerTool(tool: SubagentTool): void;
@@ -46,8 +49,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
     let service: RunService | undefined;
     let stopPump: (() => void) | undefined;
     let inboxFailures = 0;
-    let openPrompts = 0;
-    let exiting = false;
+    const autoExit = watchAutoExit(pi);
 
     const stopInbox = () => {
       stopPump?.();
@@ -96,8 +98,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
 
     pi.on("session_start", (_event, ctx) => {
       stopInbox();
-      openPrompts = 0;
-      exiting = false;
+      autoExit.reset();
       const sources = { cwd: ctx.cwd, trusted: ctx.isProjectTrusted() };
       startService(sources);
       if (config.enabled) {
@@ -107,30 +108,14 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       startInbox(ctx);
     });
 
-    pi.on("session_shutdown", () => {
+    pi.on("session_shutdown", (event, ctx) => {
       stopInbox();
       service?.shutdown();
       service = undefined;
-    });
-
-    pi.on("ui_prompt_start", () => {
-      openPrompts += 1;
-    });
-
-    pi.on("ui_prompt_end", () => {
-      openPrompts = Math.max(0, openPrompts - 1);
-    });
-
-    pi.on("agent_settled", (_event, ctx) => {
-      if (exiting || process.env[AUTO_EXIT_ENV] !== "1" || openPrompts > 0) {
-        return;
-      }
       const sessionFile = ctx.sessionManager.getSessionFile();
-      if (!sessionFile || inboxCount(sessionFile) > 0) {
-        return;
+      if (sessionFile && hasInbox(sessionFile)) {
+        deps.writeExitReceipt(sessionFile, event.reason);
       }
-      exiting = true;
-      ctx.shutdown();
     });
 
     const currentService = (): RunService => {
