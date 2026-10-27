@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
@@ -21,6 +21,16 @@ interface SentMessage {
   options: { triggerTurn?: boolean } | undefined;
 }
 
+interface SentUserMessage {
+  content: string;
+  options: { deliverAs?: "steer" | "followUp" } | undefined;
+}
+
+interface Notification {
+  message: string;
+  type: string | undefined;
+}
+
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
 
 function fakePi(events: string[] = []) {
@@ -28,6 +38,9 @@ function fakePi(events: string[] = []) {
   const startHandlers: SessionStartHandler[] = [];
   const shutdownHandlers: Array<() => void> = [];
   const sent: SentMessage[] = [];
+  const userMessages: SentUserMessage[] = [];
+  const notifications: Notification[] = [];
+  let sendUserMessageImpl: (content: string) => void = () => {};
   const pi: ExtensionRegistrar = {
     on(event: "session_start" | "session_shutdown", handler: SessionStartHandler | (() => void)) {
       if (event === "session_start") {
@@ -43,10 +56,26 @@ function fakePi(events: string[] = []) {
       events.push("sendMessage");
       sent.push({ message, options });
     },
+    sendUserMessage(content, options) {
+      userMessages.push({ content, options });
+      sendUserMessageImpl(content);
+    },
   };
-  const startSession = (ctx: SessionContext = { cwd: projectDir, isProjectTrusted: () => false }) => {
+  const startSession = (ctx: Partial<SessionContext> = {}) => {
+    const session: SessionContext = {
+      cwd: projectDir,
+      isProjectTrusted: () => false,
+      sessionManager: { getSessionFile: () => undefined },
+      isIdle: () => true,
+      ui: {
+        notify: (message, type) => {
+          notifications.push({ message, type });
+        },
+      },
+      ...ctx,
+    };
     for (const handler of startHandlers) {
-      handler({ type: "session_start", reason: "startup" }, ctx);
+      handler({ type: "session_start", reason: "startup" }, session);
     }
   };
   const shutdownSession = () => {
@@ -54,7 +83,18 @@ function fakePi(events: string[] = []) {
       handler();
     }
   };
-  return { pi, sent, shutdownSession, startSession, tools };
+  return {
+    notifications,
+    pi,
+    sent,
+    setSendUserMessage(impl: (content: string) => void) {
+      sendUserMessageImpl = impl;
+    },
+    shutdownSession,
+    startSession,
+    tools,
+    userMessages,
+  };
 }
 
 interface FakeHostFailures {
@@ -70,6 +110,7 @@ function fakeHost(
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
   const renamedPanes: Array<{ paneId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
+  const inboxAtStart: boolean[] = [];
   let panes = 0;
   let starts = 0;
   let getAgentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
@@ -95,6 +136,7 @@ function fakeHost(
     async startAgent(input) {
       calls.push("startAgent");
       agents.push(input);
+      inboxAtStart.push(existsSync(`${input.sessionFile}.inbox`));
       starts += 1;
       const error = options.failures?.startAgent?.(starts);
       if (error) {
@@ -118,6 +160,7 @@ function fakeHost(
     agents,
     calls,
     host,
+    inboxAtStart,
     renamedPanes,
     renamedTabs,
     setGetAgent(impl: (name: string) => Promise<AgentSnapshot | null>) {
@@ -159,7 +202,7 @@ function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
   createExtension({ host, readLastAssistant, loadConfig: () => loadConfig(resolveAgentDir()), loadProfiles })(pi);
 }
 
-function loadSession(host: HerdrHost, events: string[] = [], ctx?: SessionContext) {
+function loadSession(host: HerdrHost, events: string[] = [], ctx?: Partial<SessionContext>) {
   const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
   registerExtension(pi, host);
   startSession(ctx);
@@ -170,7 +213,7 @@ function loadSession(host: HerdrHost, events: string[] = [], ctx?: SessionContex
   return { sent, shutdownSession, startSession, tool };
 }
 
-function loadTool(host: HerdrHost, ctx?: SessionContext) {
+function loadTool(host: HerdrHost, ctx?: Partial<SessionContext>) {
   return loadSession(host, [], ctx).tool;
 }
 
@@ -184,6 +227,28 @@ function loadTimedSession(
   const fake = fakeHost({ events: calls, closeTab });
   fake.setGetAgent(getAgent);
   return { ...loadSession(fake.host, calls), calls };
+}
+
+function childSessionFile(): string {
+  return join(agentDir, "child.jsonl");
+}
+
+function writeInbox(sessionFile: string, files: Array<[name: string, text: string]>) {
+  const dir = `${sessionFile}.inbox`;
+  mkdirSync(dir, { recursive: true });
+  for (const [name, text] of files) {
+    writeFileSync(join(dir, name), text);
+  }
+}
+
+function loadChild(sessionFile: string | undefined, options: { isIdle?: () => boolean } = {}) {
+  const fake = fakePi();
+  registerExtension(fake.pi, fakeHost().host);
+  fake.startSession({
+    sessionManager: { getSessionFile: () => sessionFile },
+    isIdle: options.isIdle ?? (() => true),
+  });
+  return fake;
 }
 
 async function runProfiles(
@@ -208,6 +273,10 @@ function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]> {
 
 function runTask(tool: SubagentTool, task: string, profile = "worker") {
   return tool.execute("call-1", { action: "run", profile, task }, undefined, undefined, {} as never);
+}
+
+function sendTask(tool: SubagentTool, name: string, message: string) {
+  return tool.execute("call-2", { action: "send", name, message }, undefined, undefined, {} as never);
 }
 
 function startRun(
@@ -276,7 +345,7 @@ afterEach(async () => {
   delete process.env.PI_CODING_AGENT_DIR;
 });
 
-it("registers the subagent schema", () => {
+it("accepts run and send", () => {
   const tool = loadTool(fakeHost().host);
 
   expect(tool.name).toBe("subagent");
@@ -284,17 +353,29 @@ it("registers the subagent schema", () => {
 
   const schema = tool.parameters as unknown as {
     type: string;
-    properties: Record<string, unknown>;
-    required: string[];
-    additionalProperties: boolean;
+    oneOf: Array<{
+      type: string;
+      properties: Record<string, Record<string, unknown>>;
+      required: string[];
+      additionalProperties: boolean;
+    }>;
   };
   expect(schema.type).toBe("object");
-  expect(Object.keys(schema.properties)).toEqual(["action", "profile", "task"]);
-  expect(schema.properties.action).toMatchObject({ const: "run" });
-  expect(schema.properties.profile).toMatchObject({ type: "string", minLength: 1 });
-  expect(schema.properties.task).toMatchObject({ type: "string", minLength: 1 });
-  expect(schema.required).toEqual(["action", "profile", "task"]);
-  expect(schema.additionalProperties).toBe(false);
+  expect(schema.oneOf).toHaveLength(2);
+
+  const [run, send] = schema.oneOf;
+  expect(run?.type).toBe("object");
+  expect(run?.properties.action).toMatchObject({ const: "run" });
+  expect(run?.properties.task).toMatchObject({ type: "string", minLength: 1 });
+  expect(run?.required).toEqual(["action", "profile", "task"]);
+  expect(run?.additionalProperties).toBe(false);
+
+  expect(send?.type).toBe("object");
+  expect(send?.properties.action).toMatchObject({ const: "send" });
+  expect(send?.properties.name).toMatchObject({ type: "string", pattern: "^[a-z][a-z0-9_-]{0,31}$" });
+  expect(send?.properties.message).toMatchObject({ type: "string", minLength: 1 });
+  expect(send?.required).toEqual(["action", "name", "message"]);
+  expect(send?.additionalProperties).toBe(false);
 });
 
 it("reports config errors without registering", () => {
@@ -380,6 +461,16 @@ it("writes the child session under the agent dir", async () => {
   expect(started.sessionFile.startsWith(join(sessionsRoot(), "explore-1-"))).toBe(true);
   expect(started.sessionFile.endsWith(".jsonl")).toBe(true);
   expect(existsSync(sessionsRoot())).toBe(true);
+});
+
+it("creates the child inbox before start", async () => {
+  process.env.HERDR_ENV = "1";
+  const fake = fakeHost();
+
+  const { started } = await startRun(fake);
+
+  expect(existsSync(`${started.sessionFile}.inbox`)).toBe(true);
+  expect(fake.inboxAtStart).toEqual([true]);
 });
 
 it("keeps brief and identity next to the session", async () => {
@@ -509,6 +600,38 @@ it("labels the pane with the first task line", async () => {
   await startRun(long, { task: "x".repeat(40) });
 
   expect(long.renamedPanes).toEqual([{ paneId: "w1:p1", label: "x".repeat(32) }]);
+});
+
+it("queues a message for a live child", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
+  const { tool } = loadSession(fakeHost().host);
+  const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
+
+  const result = await sendTask(tool, "explore-1", "Also check the Windows branch.");
+
+  expect(result.isError).toBe(false);
+  expect(firstText(result)).toBe('{"state":"sent","name":"explore-1"}');
+  const files = (await readdir(`${started.sessionFile}.inbox`)).filter((name) => name.endsWith(".md"));
+  expect(files).toHaveLength(1);
+  const content = await readFile(join(`${started.sessionFile}.inbox`, files[0] ?? ""), "utf8");
+  expect(content.startsWith("[from parent]")).toBe(true);
+  expect(content).toContain("Also check the Windows branch.");
+});
+
+it("rejects unknown agent", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
+  const { tool } = loadSession(fakeHost().host);
+  const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
+
+  const result = await sendTask(tool, "ghost", "hello");
+
+  expect(result.isError).toBe(true);
+  const text = firstText(result);
+  expect(text.startsWith("unknown_agent:")).toBe(true);
+  expect(text).toContain("explore-1");
+  expect(await readdir(`${started.sessionFile}.inbox`)).toEqual([]);
 });
 
 it("lists profiles on unknown profile", async () => {
@@ -738,8 +861,10 @@ it("retries name_taken with next worker", async () => {
   }
   expect(existsSync(`${firstAgent.sessionFile}.brief.md`)).toBe(false);
   expect(existsSync(`${firstAgent.sessionFile}.identity.md`)).toBe(false);
+  expect(existsSync(`${firstAgent.sessionFile}.inbox`)).toBe(false);
   expect(existsSync(`${secondAgent.sessionFile}.brief.md`)).toBe(true);
   expect(existsSync(`${secondAgent.sessionFile}.identity.md`)).toBe(true);
+  expect(existsSync(`${secondAgent.sessionFile}.inbox`)).toBe(true);
   expect(sent).toHaveLength(0);
 });
 
@@ -760,6 +885,9 @@ it("gives up after 100 name retries", async () => {
   expect(agents.map((agent) => agent.name)).toEqual(Array.from({ length: 100 }, (_, index) => `worker-${index + 1}`));
   expect(calls.filter((call) => call === "startAgent")).toHaveLength(100);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+  expect(agents.filter((agent) => existsSync(`${agent.sessionFile}.brief.md`))).toEqual([]);
+  expect(agents.filter((agent) => existsSync(`${agent.sessionFile}.identity.md`))).toEqual([]);
+  expect(agents.filter((agent) => existsSync(`${agent.sessionFile}.inbox`))).toEqual([]);
   expect(sent).toHaveLength(0);
 
   nameTaken = false;
@@ -1103,4 +1231,82 @@ it("stops after session shutdown", async () => {
 
   expect(sent).toHaveLength(0);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("delivers inbox messages in order", async () => {
+  vi.useFakeTimers();
+  const sessionFile = childSessionFile();
+  writeInbox(sessionFile, [
+    ["b.md", "second"],
+    ["a.md", "first"],
+  ]);
+  const child = loadChild(sessionFile);
+
+  await vi.advanceTimersByTimeAsync(250);
+
+  expect(child.userMessages).toEqual([
+    { content: "first", options: undefined },
+    { content: "second", options: undefined },
+  ]);
+  expect(existsSync(join(`${sessionFile}.inbox`, ".delivered", "a.md"))).toBe(true);
+  expect(existsSync(join(`${sessionFile}.inbox`, ".delivered", "b.md"))).toBe(true);
+
+  await vi.advanceTimersByTimeAsync(250);
+
+  expect(child.userMessages).toHaveLength(2);
+});
+
+it("steers while the child is busy", async () => {
+  vi.useFakeTimers();
+  const sessionFile = childSessionFile();
+  writeInbox(sessionFile, [["a.md", "busy"]]);
+  const child = loadChild(sessionFile, { isIdle: () => false });
+
+  await vi.advanceTimersByTimeAsync(250);
+
+  expect(child.userMessages).toEqual([{ content: "busy", options: { deliverAs: "steer" } }]);
+});
+
+it("does not poll without an inbox", async () => {
+  vi.useFakeTimers();
+  const child = loadChild(childSessionFile());
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(child.userMessages).toEqual([]);
+  expect(child.notifications).toEqual([]);
+});
+
+it("stops inbox polling on shutdown", async () => {
+  vi.useFakeTimers();
+  const sessionFile = childSessionFile();
+  writeInbox(sessionFile, [["a.md", "before shutdown"]]);
+  const child = loadChild(sessionFile);
+
+  await vi.advanceTimersByTimeAsync(250);
+  writeInbox(sessionFile, [["b.md", "after shutdown"]]);
+  child.shutdownSession();
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(child.userMessages).toEqual([{ content: "before shutdown", options: undefined }]);
+});
+
+it("stops inbox polling after three failures", async () => {
+  vi.useFakeTimers();
+  const sessionFile = childSessionFile();
+  writeInbox(sessionFile, [["a.md", "never delivered"]]);
+  const child = loadChild(sessionFile);
+  child.setSendUserMessage(() => {
+    throw new Error("not ready");
+  });
+
+  await vi.advanceTimersByTimeAsync(750);
+
+  expect(child.userMessages).toHaveLength(3);
+  expect(child.notifications).toEqual([{ message: expect.stringContaining("inbox"), type: "error" }]);
+
+  await vi.advanceTimersByTimeAsync(2000);
+
+  expect(child.userMessages).toHaveLength(3);
+  expect(child.notifications).toHaveLength(1);
 });

@@ -11,10 +11,11 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
-| extension | pi 工具、生命周期、消息信封、错误渲染 | subagent；config/profile 类型、herdr/session 端口（type-only）；pi 类型 |
-| subagent | run 生命周期、profile 解析与 argv、并发、命名、轮询、结果内容/截断 | herdr 端口、session 读取、profile、config、Node fs |
+| extension | pi 工具、生命周期、消息信封、错误渲染、子侧 inbox 投递 | subagent、inbox；config/profile 类型、herdr/session 端口（type-only）；pi 类型 |
+| subagent | run 生命周期、profile 解析与 argv、并发、命名、结果轮询、结果内容/截断、send | herdr 端口、session 读取、profile、config、inbox、Node fs |
 | herdr | HerdrHost 端口 + CLI 适配 | Node child_process |
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
+| inbox | `<childSession>.inbox/` 的建目录、入队、按序投递、归档与删除 | Node fs / path / crypto |
 | config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
 | profile | 读 `<agent-dir>/agents/*.md`：拆 frontmatter 与 body，校验字段；解析 skills 路径 | pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
 
@@ -24,15 +25,17 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 
 pi 适配层：在 `session_start` 注册工具、挂 `session_start` / `session_shutdown`；工具调用时检查 `HERDR_ENV`，把 ToolError 渲染成 `isError`；异步结果封装成 `subagent_result`。注册名、开关与工具文案来自 config；文案里的 `{{profiles}}` 在注册时用 `loadProfiles` 展开。run 的 `profile` 原样传给 subagent；profile 查询与错误在 subagent 内。
 
-不持有 run 状态，不做并发、命名、轮询、截断、JSONL 解析，也不直接碰 herdr CLI。测试从注册后的工具进入。
+不持有 run 状态，不做并发、命名、结果轮询、截断、JSONL 解析，也不直接碰 herdr CLI。子侧 inbox 轮询与 `sendUserMessage` 投递在这里，文件操作只经 inbox。测试从注册后的工具进入。
 
 ### subagent
 
-run 生命周期内核。对外只有 SubagentService：`run`、`onResult`、`shutdown`、`active`。
+run 生命周期内核。对外只有 SubagentService：`run`、`send`、`onResult`、`shutdown`、`active`。
 
 subagent 负责槽位、`<profile>-<n>` 与 pane 标签、brief、串行轮询、`completion_seq`、结果读取重试、按 `maxResultChars` 截断、done/unknown；槽位上限来自调用方传入的 `maxConcurrent`。run 先解析 profile：缺 → `unknown_profile`，坏字段 → `profile_invalid`，都发生在占槽之前。
 
 profile 随后落成子进程参数；append / replace 另写身份文件。`cwd` 相对父 cwd 解析后交给 `createTab`；字段到参数的映射见 [v1 契约](specs/0001-v1-contract.md) 第 2 节与 [PROMPTS](PROMPTS.md) 第 3 节。
+
+`send` 按名字查 live run，未知名字报 `unknown_agent` 并列出可用名字，命中就把消息写进该 run 的 inbox。
 
 最后一条 assistant 仍带 toolCall 时继续轮询，等反问/工具返回后的最终文本。不 import pi，不拼 herdr 命令；不承担恢复。
 
@@ -46,9 +49,15 @@ CLI 调用全部走 `execFile` 的 argv，不经过 shell；解析 JSON；错误
 
 `readLastAssistant(path)`：读 child session JSONL，返回最后一条 assistant 消息的 `{ text, pendingToolCall }`。text 是 text block 拼接并 trim；pendingToolCall 表示该消息仍带 toolCall。文件读不到、坏行、没有文本时 text 为 null；不重试、不 sleep、不写文件。重试和路径策略在 subagent。
 
+### inbox
+
+`<childSession>.inbox/` 的唯一读写口。`createInbox` 建目录；`enqueue` 先把消息写进临时文件再 rename 成按进程内单调时间排序的 `.md`，保证父侧发送顺序；`drain` 按文件名顺序读，逐条交给投递回调，成功后 rename 到 `.delivered/`，回调抛错即停并留下该文件等下一轮；`hasInbox` 只认真实目录，ENOENT 视为没有，其他 fs 错误照常抛出；`removeInbox` 删除整个目录，用于 `name_taken` 重试时清掉本次尝试。
+
+消息文本与失败计数不属于这里：前缀由 subagent 拼（格式见 [PROMPTS](PROMPTS.md) 第 4 节），失败上限与停止后的通知由 extension 决定。
+
 ### config
 
-`loadConfig(agentDir)` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。agent 目录由入口用 profile 的 `agentDir()` 解析。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`；其余键留给后续任务。
+`loadConfig(agentDir)` 读一次 `<agent-dir>/pi-herdr-subagents-lite/config.json`：文件不存在返回默认值；数值越界静默 clamp；未知键、类型错、枚举错合并成一条错误，消息带文件路径与字段名。agent 目录由入口用 profile 的 `agentDir()` 解析。extension 消费 `enabled`、`toolName`、`prompts`、`maxConcurrent`、`maxResultChars`、`inboxPollMs`；其余键留给后续任务。
 
 index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次。配置无效时工厂抛错，pi 显示 extension error，工具不注册。
 
@@ -60,7 +69,7 @@ profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 f
 
 ### v1 差异
 
-- extension 增加 `send`、bridge 监听、`subagent_question` 转发；subagent 增加 inbox、`<childSession>.exit` 回执与续聊。
+- 剩余差异：extension 的 bridge 监听与 `subagent_question` 转发；subagent 的 `<childSession>.exit` 回执与 send 续聊。
 - 子进程全局安装后也加载本包；不靠 marker 或角色检测。
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata` 做恢复。
 - 当前代码逐 run 调 `getAgent`，每 1s 轮询一次；v1 改为 `agent list` 快照，以 [v1 契约](specs/0001-v1-contract.md) 为准。
@@ -74,6 +83,7 @@ index -> herdr
 index -> profile
 index -> session
 extension -> subagent
+extension -> inbox
 extension ..> config   (type-only)
 extension ..> herdr    (type-only)
 extension ..> profile  (type-only)
@@ -82,10 +92,12 @@ subagent -> herdr
 subagent -> profile
 subagent -> session
 subagent -> config
+subagent -> inbox
 ~~~
 
-- 只能沿箭头依赖，禁止反向 import；config、herdr、session、profile 是叶子。
+- 只能沿箭头依赖，禁止反向 import；config、herdr、session、profile、inbox 是叶子。
 - config 只认 Node fs/path/os，不 import pi，也不 import 其他模块；配置错误的唯一表达是一条带字段名的 Error。
+- inbox 只认 Node fs/path/crypto，不 import 其他模块；不解析消息内容，也不记投递失败次数。
 - subagent 不 import pi；extension 不 import 真实 CLI 或 fs；只有 index 同时认识真实适配器与 pi。
 - 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts` 与 `src/extension/index.ts` 只做 type-only import，在 `src/profile/index.ts` 做运行时 import；`typebox` 只在 extension。
 - bridge 是 extension 内的事件监听，不单独入口；`ui_prompt_*` 监听由 extension 注册，bridge 配置也由 extension 读取，不引入 bridge 模块。
@@ -97,7 +109,7 @@ subagent -> config
 - 模块说明写在本文，不单列模块文档；改接口或语义时同步本文与 [v1 契约](specs/0001-v1-contract.md)。术语见 [GLOSSARY](GLOSSARY.md)。
 - 入口 `src/index.ts` 只做 composition root + 默认导出；extension 是唯一注册工具、使用 pi 生命周期的模块。
 - 结果内容与截断属于 subagent；消息信封（customType、display、triggerTurn、头部）属于 extension。错误在 herdr 映射为 host 错误，在 subagent 映射为 ToolError，extension 只渲染。
-- 测试统一放 `test/`。按 seam 平铺：`config.test.ts`（配置解析）、`profile.test.ts`（profile 解析）、`extension.test.ts`（工具契约 + run 生命周期）、`session.test.ts`（纯函数表驱动）、`index.test.ts`（入口导出）。真实 herdr CLI 不进自动化测试，只做手工 E2E；等有可跑的自动化真实链路再加 `test/e2e/`。
+- 测试统一放 `test/`。按 seam 平铺：`config.test.ts`（配置解析）、`profile.test.ts`（profile 解析）、`inbox.test.ts`（inbox 文件）、`extension.test.ts`（工具契约 + run 生命周期 + 子侧 inbox 投递）、`session.test.ts`（纯函数表驱动）、`index.test.ts`（入口导出）。真实 herdr CLI 不进自动化测试，只做手工 E2E；等有可跑的自动化真实链路再加 `test/e2e/`。
 - 唯一 mock seam 是 pi 扩展 API + 注入 HerdrHost：fake pi、fake host、fake timers、临时 session JSONL。测试不 mock SubagentService 内部，也不 mock Node fs；真实 CLI 字段由手工 E2E 校准，不写第二个 mock。
 - 仓库级守卫是 `scripts/check-imports.mjs`（零依赖 node 脚本）；提交前闸是 `.githooks/pre-commit`（`git config core.hooksPath .githooks` 启用一次），与 CI 跑同一批命令。
 - 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
@@ -111,6 +123,7 @@ subagent -> config
 | loadConfig | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验、配置错误 |
 | loadProfiles | 临时 agent 目录、临时项目目录 + 真实 fs | frontmatter 与 body 拆分、字段校验、坏字段、受信项目的覆盖 |
 | SessionReader | 纯函数表驱动 | JSONL 解析边界 |
+| inbox | 临时 session 路径 + 真实 fs；子侧轮询经 fake pi + fake timers | 建目录、入队顺序、按序投递、归档、失败保留与停止 |
 | 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/close、真实 child |
 | bridge（v1，extension 内） | fake pi events | `ui_prompt_*` → `herdr:blocked` |
 

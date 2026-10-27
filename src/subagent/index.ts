@@ -3,6 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { dataDir } from "../config/index.ts";
 import { type AgentSnapshot, type HerdrHost, HerdrHostError } from "../herdr/index.ts";
+import { createInbox, enqueue, removeInbox } from "../inbox/index.ts";
 import { agentDir, type Profile, type ProfileCatalog, skillPath } from "../profile/index.ts";
 import type { SessionReader } from "../session/index.ts";
 
@@ -24,6 +25,11 @@ export interface RunStarted {
   name: string;
   paneId: string;
   sessionFile: string;
+}
+
+export interface SentResult {
+  state: "sent";
+  name: string;
 }
 
 export interface DoneResult {
@@ -60,6 +66,7 @@ export class ToolError extends Error {
 
 export interface SubagentService {
   run(profile: string, task: string): Promise<RunStarted>;
+  send(name: string, message: string): Promise<SentResult>;
   onResult(handler: ResultHandler): void;
   shutdown(): void;
   active(): string[];
@@ -367,6 +374,7 @@ export function createSubagentService({
           if (profile.systemPrompt !== "task") {
             await writeFile(current.identityFile, profile.body, "utf8");
           }
+          await createInbox(current.sessionFile);
           try {
             await host.startAgent({
               name: run.name,
@@ -380,7 +388,11 @@ export function createSubagentService({
             if (!(error instanceof HerdrHostError && error.code === "name_taken")) {
               throw error;
             }
-            await Promise.all([rm(current.briefFile, { force: true }), rm(current.identityFile, { force: true })]);
+            await Promise.all([
+              rm(current.briefFile, { force: true }),
+              rm(current.identityFile, { force: true }),
+              removeInbox(current.sessionFile),
+            ]);
             if (retry >= NAME_ATTEMPTS) {
               throw new ToolError(
                 "name_exhausted",
@@ -409,6 +421,17 @@ export function createSubagentService({
         }
         throw spawnFailed(error, run.paneId || undefined);
       }
+    },
+
+    async send(name, message) {
+      const run = runs.find((candidate) => candidate.name === name);
+      if (!run) {
+        const names = active();
+        const available = names.length === 0 ? "none" : names.join(", ");
+        throw new ToolError("unknown_agent", `unknown agent "${name}"; available: ${available}`);
+      }
+      await enqueue(run.sessionFile, `[from parent]\n\n${message}\n`);
+      return { state: "sent", name };
     },
 
     onResult(handler) {

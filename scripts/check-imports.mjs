@@ -10,11 +10,12 @@ import { join, relative } from "node:path";
 const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "subagent", "herdr", "session"],
-  subagent: ["config", "subagent", "profile", "herdr", "session"],
+  extension: ["config", "extension", "profile", "subagent", "herdr", "session", "inbox"],
+  subagent: ["config", "subagent", "profile", "herdr", "session", "inbox"],
   profile: ["profile"],
   herdr: ["herdr"],
   session: ["session"],
+  inbox: ["inbox"],
 };
 
 /** 只允许出现在指定位置的依赖；typeOnlyIn 里的文件必须写成 `import type`。 */
@@ -28,11 +29,17 @@ const SINGLE_IMPORT = [
   { specifier: /^node:child_process$/, only: ["src/herdr/index.ts"] },
   {
     specifier: /^node:fs(\/|$)/,
-    only: ["src/config/index.ts", "src/profile/index.ts", "src/session/index.ts", "src/subagent/index.ts"],
+    only: [
+      "src/config/index.ts",
+      "src/inbox/index.ts",
+      "src/profile/index.ts",
+      "src/session/index.ts",
+      "src/subagent/index.ts",
+    ],
   },
   {
     specifier: /^node:(path|os|crypto)$/,
-    only: ["src/config/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
+    only: ["src/config/index.ts", "src/inbox/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
