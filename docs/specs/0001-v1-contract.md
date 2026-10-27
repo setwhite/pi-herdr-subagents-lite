@@ -135,12 +135,13 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `unknown_agent` | send 的 name 不在 run 记录里 | 当前可用名称 |
 | `max_concurrent` | live 子代理已达 maxConcurrent | 当前 live 名称；等结果或关一个 |
 | `profile_invalid` | profile 字段解析失败 | 文件 + 字段 + 原因 |
-| `spawn_failed` | tab / pane / agent start 失败 | 底层错误；已创建的 pane id 保留 |
-| `agent_not_ready` | pane 未就绪、trust 对话框拦住 | 让人去 pane 处理对话框 |
+| `spawn_failed` | tab / pane / agent start 失败；含未就绪与 trust 对话框拦住 | 底层错误；已创建的 pane id 保留；未就绪时附「去 pane 处理对话框」 |
 | `name_exhausted` | 自动命名重试 100 次仍冲突 | 当前 live 名称；关一个再试 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |
 | `session_missing` | send 的 run 记录存在，但子 session 文件不存在 | 用 run 新建 |
 | `artifact_write_failed` | 结果超限且 artifact 写失败 | 消息带截断头部和警告，不算工具错误 |
+
+- 只覆盖 `guidelines` 且没写 `{{profiles}}` 时，模型看不到 profile 列表；`snippet: ""` 的实际效果是从 Available tools 隐藏。
 
 配置错误不是工具错误：不注册工具；pi 显示 extension error；不中止启动。
 
@@ -184,7 +185,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 异步结果是一条 `subagent_result` 自定义消息；父模型看到的是文本，不是工具结果：
 
 ~~~text
-[subagent explore-1] done (profile=explore, seq=3)
+[subagent explore-1] done
 
 <result text, up to maxResultChars>
 
@@ -195,10 +196,10 @@ Full result: <childSession>.result-3.md
 - 聚合时一条消息里放多个块：
 
 ~~~text
-[subagent explore-1] done (profile=explore, seq=2)
+[subagent explore-1] done
 ...
 
-[subagent review-1] done (profile=review, seq=1)
+[subagent review-1] done
 ...
 ~~~
 
@@ -208,15 +209,15 @@ Full result: <childSession>.result-3.md
 |---|---|
 | 有回执，session 尾部有最终文本且没有未完成 toolCall | `done`，正文取该文本 |
 | 有回执，尾部没有可用文本 | `unknown (quitted)` |
-| 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane exited)` |
+| 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane_exited)` |
 
 - 已经投递过的 run 不再因回执重复投递。
+- 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 失败）、`close_failed`（关 tab 失败后补投）。
 
 ~~~text
-[subagent explore-1] unknown (pane exited)
+[subagent explore-1] unknown (pane_exited)
 
-The subagent stopped before reporting a result.
-Its session is saved at <childSession>.
+Session: <childSession>
 ~~~
 
 - 死亡消息是该 run 的终态：最多一条，不受 `lastHandledSeq` 约束。

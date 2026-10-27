@@ -11,7 +11,7 @@
 pi install npm:pi-herdr-subagents-lite
 ~~~
 
-全局安装加载一个扩展，同时提供 `subagent` 工具与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M4；当前 `package.json` 仍是 `private: true`。
+全局安装加载一个扩展，同时提供 `subagent` 工具与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M6（见 [任务台账](docs/todos/README.md)）；当前 `package.json` 仍是 `private: true`。
 
 开发时直接加载源码：
 
@@ -29,7 +29,7 @@ pi -e ./src/index.ts
 
 返回 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
 
-全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`：`enabled` 控制是否注册，`toolName` 改注册名，`prompts` 覆盖工具文案。
+全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`；键、默认值与校验见 [v1 契约](docs/specs/0001-v1-contract.md) 第 1 节。
 
 ## 开发
 

@@ -86,7 +86,7 @@
 - profile 的字段形状和 frontmatter 解析；当前字段契约见 [v1 契约](../specs/0001-v1-contract.md) 第 2 节。
 - 后续消息用文件 inbox + 原子 rename + 轮询（D26）。
 - 子 session 最后一条 assistant 文本作为结果（D36）。
-- durable 的 requestId 幂等、所有权与「只上报一次」思路；当前用 `(name, completion_seq)` 和每 run 单次投递实现（D36）。
+- durable 的 requestId 幂等、所有权与「只上报一次」思路；当前用 `(pane_id 优先、name 兜底, completion_seq)` 和每 run 单次投递实现（D36）。
 
 避开：
 

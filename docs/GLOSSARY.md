@@ -6,6 +6,9 @@
 | **pi-herdr-subagents** | 同名参考项目：本机装的是 fyang93 1.1.0；另有 modem-dev 版本 | 不是 herdr 的一部分，也不是本项目的 fork 来源 |
 | **pi-durable** | 可嵌入的 durable harness；子代理是同进程子 conversation | 没接进 pi CLI |
 | **常驻子进程** | `pi --session <file>`，可续聊、反问、steer | 不是一次性 `-p --no-session` |
+| **任务简报** | `<childSession>.brief.md`；worker 指令 + `# Task` 段，用 `@brief` 投递（D9） | 不是 profile body，也不是 session 文件 |
+| **槽位** | `maxConcurrent` 的一个名额；占槽 = run 还在记录里且未结算 | 不是 herdr 的 pane 数 |
+| **live** | 占着槽位、还在轮询的 run / agent | 不是 `agent_status` 的取值 |
 | **profile** | 角色模板；全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md` + 项目 `.pi/pi-herdr-subagents-lite/profiles/*.md`；文件名是 profile 名 | 不是 agent name |
 | **子代理名** | `<profile>-<n>`，herdr live agent name；run 返回，send 用它 | 不是 profile 名，也不是 pane 标题 |
 | **tab label** | tab 栏文字；v1 等于子代理名 | 不是 agent name 字段 |
