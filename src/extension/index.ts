@@ -4,16 +4,16 @@ import type { Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
 import { drain, hasInbox } from "../inbox/index.ts";
 import type { Profile, ProfileCatalog, ProfileSources } from "../profile/index.ts";
-import type { SessionReader } from "../session/index.ts";
 import {
-  createSubagentService,
+  createRunService,
   profileLabel,
+  type RunResult,
+  type RunService,
   type RunStarted,
   type SendResult,
-  type SubagentResult,
-  type SubagentService,
   ToolError,
-} from "../subagent/index.ts";
+} from "../run/index.ts";
+import type { SessionReader } from "../session/index.ts";
 
 export interface ExtensionDeps {
   host: HerdrHost;
@@ -141,7 +141,7 @@ function toolFailed(error: ToolError) {
   };
 }
 
-function resultText(result: SubagentResult): string {
+function resultText(result: RunResult): string {
   if (result.state === "unknown") {
     return `[subagent ${result.name}] unknown (${result.reason})\n\nSession: ${result.sessionFile}`;
   }
@@ -151,7 +151,7 @@ function resultText(result: SubagentResult): string {
 export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) => void {
   return (pi: ExtensionRegistrar) => {
     const config = deps.loadConfig();
-    let service: SubagentService | undefined;
+    let service: RunService | undefined;
     let inboxTimer: ReturnType<typeof setInterval> | undefined;
     let inboxFailures = 0;
 
@@ -188,16 +188,16 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       inboxTimer.unref?.();
     };
 
-    const deliver = (result: SubagentResult) => {
+    const deliver = (result: RunResult) => {
       pi.sendMessage(
         { customType: "subagent_result", content: resultText(result), display: true },
         { triggerTurn: true },
       );
     };
 
-    const startService = (sources: ProfileSources): SubagentService => {
+    const startService = (sources: ProfileSources): RunService => {
       service?.shutdown();
-      service = createSubagentService({
+      service = createRunService({
         host: deps.host,
         readLastAssistant: deps.readLastAssistant,
         loadProfiles: () => deps.loadProfiles(sources),
@@ -255,7 +255,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       service = undefined;
     });
 
-    const currentService = (): SubagentService => {
+    const currentService = (): RunService => {
       if (!service) {
         throw new Error("subagent service is not started");
       }

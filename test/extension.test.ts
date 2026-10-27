@@ -19,8 +19,8 @@ import {
   type StartAgentInput,
 } from "../src/herdr/index.ts";
 import { loadProfiles, agentDir as resolveAgentDir } from "../src/profile/index.ts";
+import type { RunStarted } from "../src/run/index.ts";
 import { readLastAssistant } from "../src/session/index.ts";
-import type { RunStarted } from "../src/subagent/index.ts";
 
 interface SentMessage {
   message: { customType: string; content: string; display: boolean };

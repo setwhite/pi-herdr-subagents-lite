@@ -10,8 +10,8 @@ import { join, relative } from "node:path";
 const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "subagent", "herdr", "session", "inbox"],
-  subagent: ["config", "subagent", "profile", "herdr", "session", "inbox"],
+  extension: ["config", "extension", "profile", "run", "herdr", "session", "inbox"],
+  run: ["config", "run", "profile", "herdr", "session", "inbox"],
   profile: ["config", "profile"],
   herdr: ["herdr"],
   session: ["session"],
@@ -34,16 +34,24 @@ const SINGLE_IMPORT = [
       "src/inbox/index.ts",
       "src/profile/index.ts",
       "src/session/index.ts",
-      "src/subagent/index.ts",
+      "src/run/start.ts",
+      "src/run/send.ts",
     ],
   },
   {
     specifier: /^node:(path|os|crypto)$/,
-    only: ["src/config/index.ts", "src/inbox/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
+    only: [
+      "src/config/index.ts",
+      "src/inbox/index.ts",
+      "src/profile/index.ts",
+      "src/run/index.ts",
+      "src/run/start.ts",
+      "src/run/spawn-args.ts",
+    ],
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
+    only: ["src/extension/index.ts", "src/profile/index.ts", "src/run/"],
     typeOnlyIn: ["src/extension/index.ts"],
   },
 ];

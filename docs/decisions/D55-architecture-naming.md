@@ -1,6 +1,6 @@
 # D55 模块命名与文件拆分
 
-模块名 = 职责的普通名词，单数。`extension` 只留 pi 装配；模型面拆成 `tool`；`subagent` 改 `run`；`session` 改 `session-file`；bridge 独立成模块。单文件上限 150 行，模块内文件按动作命名。
+模块名 = 职责的普通名词，单数。`extension` 只留 pi 装配；模型面拆成 `tool`；`subagent` 改 `run`；`session` 改 `session-file`；bridge 独立成模块。单文件上限 150 行，模块内文件按职责命名。
 
 取消项：入口改名 `main.ts`（`pi -e ./src/index.ts`、package.json 与文档都要改，收益不足）；按层拆 `ports/`、`services/`、`adapters/`（违反「按职责分模块」）。
 

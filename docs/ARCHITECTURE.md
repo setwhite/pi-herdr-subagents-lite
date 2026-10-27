@@ -4,13 +4,13 @@
 
 本文只写模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则；内部 API 以代码与类型为准。v1 对外契约见 [v1 契约](specs/0001-v1-contract.md)，理由见 [决策](decisions/README.md)，任务与进度见 [任务台账](todos/README.md)。
 
-**迁移状态**：第 2、3 节的表是目标结构；当前代码仍是旧结构，按 T19–T21 迁移。迁移完成前，`scripts/check-imports.mjs` 的 `EDGES` 是实际的依赖边。
+**迁移状态**：第 2、3 节的表是目标结构，按 T19–T21 迁移。迁移完成前，`scripts/check-imports.mjs` 的 `EDGES` 是实际的依赖边。
 
 ## 1. 命名与拆分规则
 
 - 模块名是职责的普通名词，小写、单数：`config`、`profile`、`inbox`、`bridge`、`run`。禁用看不出职责的词：`utils`、`common`、`helpers`、`core`、`ports`、`service`、`manager`。
 - 一个模块 = 一个目录；对外只经 `index.ts`，其他文件不出模块。
-- 模块内文件按动作命名：`start.ts`、`poll.ts`、`result.ts`、`close.ts`。不用 `-er` / `-or` 结尾的施动者名（`poller.ts`、`handler.ts`）。
+- 模块内文件按职责命名，一个文件一件事，用单数普通名词或动词；不用 `-er` / `-or` 结尾的施动者名（`poller.ts`、`handler.ts`）。
 - 单文件上限 150 行，超过就拆；按「谁变」拆，不按「谁像」拆：一侧改而另一侧不动的代码放两个文件。
 - 类型放在使用它最多的模块；跨模块只从模块入口 import。
 
@@ -21,7 +21,7 @@
 | `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
 | `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension` | `index.ts` | 同，瘦身 |
 | `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
-| `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService` | `index.ts` `start.ts` `naming.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `errors.ts`（T19）；`close.ts`（T22）、`aggregate.ts`（T30） | 原 `subagent`（T19） |
+| `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）；`close.ts`（T22）、`aggregate.ts`（T30） | 原 `subagent`（T19） |
 | `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
 | `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`writeExitReceipt`、`readExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
 | `inbox` | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
