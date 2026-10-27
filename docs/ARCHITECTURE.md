@@ -19,8 +19,8 @@
 | 模块 | 职责 | 对外 | 文件 | 迁移 |
 |---|---|---|---|---|
 | `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
-| `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension` | `index.ts` | 同，瘦身 |
-| `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
+| `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` | 同，瘦身 |
+| `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
 | `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）；`close.ts`（T22）、`aggregate.ts`（T30） | 原 `subagent`（T19） |
 | `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
 | `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`writeExitReceipt`、`readExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
@@ -41,12 +41,14 @@ index -> profile
 index -> session-file
 extension -> tool
 extension -> run
+extension ..> config   (type-only)
+extension ..> herdr    (type-only)
+extension ..> profile  (type-only)
 extension -> bridge
 extension -> inbox
 extension -> session-file
-tool ..> run          (type-only)
+tool -> run
 tool ..> config       (type-only)
-tool ..> herdr        (type-only)
 tool ..> profile      (type-only)
 run -> herdr
 run -> profile
@@ -61,14 +63,14 @@ profile -> config
 - `config` 只认 Node fs/path/os，不 import pi；配置错误的唯一表达是一条带字段名的 Error。
 - `inbox` 只认 Node fs/path/crypto，不解析消息内容，不记投递失败次数；泵的投递函数由调用方注入。
 - `run` 不 import pi；`extension` 不 import 真实 CLI 或 fs；只有 `index.ts` 同时认识真实适配器与 pi。
-- 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts` 只做 type-only import，在 `src/profile/index.ts` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
+- 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts`、`src/tool/index.ts` 只做 type-only import，在 `src/profile/index.ts` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
 - 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`；脚本只校验源码，不比对本文。
 
 ## 4. 模块说明
 
 ### extension
 
-pi 适配层，不持有 run 状态。`session_start` 注册工具、按 `HERDR_ENV` 决定是否可用、用 `loadProfiles` 展开文案里的 `{{profiles}}`；同时挂 bridge、子侧 inbox 泵与退出回执。`session_shutdown` 按 `closeChildrenOn` 关子 tab。工具调用把 ToolError 渲染成 `isError`。
+pi 适配层，不持有 run 状态。`session_start` 装配 run 服务、按 `config.enabled` 注册工具、启动子侧 inbox 泵；`session_shutdown` 停泵并 `shutdown` 服务。工具的 `HERDR_ENV` 检查、文案展开与错误渲染在 `tool`，extension 只注入配置、profile 与 service 取用函数。
 
 ### tool
 

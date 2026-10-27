@@ -10,7 +10,8 @@ import { join, relative } from "node:path";
 const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "run", "herdr", "session", "inbox"],
+  extension: ["config", "extension", "profile", "run", "herdr", "session", "inbox", "tool"],
+  tool: ["config", "profile", "run", "tool"],
   run: ["config", "run", "profile", "herdr", "session", "inbox"],
   profile: ["config", "profile"],
   herdr: ["herdr"],
@@ -22,10 +23,10 @@ const EDGES = {
 const SINGLE_IMPORT = [
   {
     specifier: /^@earendil-works\/pi-coding-agent$/,
-    only: ["src/index.ts", "src/extension/index.ts", "src/profile/index.ts"],
-    typeOnlyIn: ["src/index.ts", "src/extension/index.ts"],
+    only: ["src/index.ts", "src/extension/index.ts", "src/profile/index.ts", "src/tool/"],
+    typeOnlyIn: ["src/index.ts", "src/extension/index.ts", "src/tool/"],
   },
-  { specifier: /^typebox$/, only: ["src/extension/index.ts"] },
+  { specifier: /^typebox$/, only: ["src/tool/schema.ts"] },
   { specifier: /^node:child_process$/, only: ["src/herdr/index.ts"] },
   {
     specifier: /^node:fs(\/|$)/,
@@ -51,8 +52,8 @@ const SINGLE_IMPORT = [
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/profile/index.ts", "src/run/"],
-    typeOnlyIn: ["src/extension/index.ts"],
+    only: ["src/extension/index.ts", "src/profile/index.ts", "src/run/", "src/tool/"],
+    typeOnlyIn: ["src/extension/index.ts", "src/tool/"],
   },
 ];
 
@@ -92,7 +93,7 @@ for (const file of files.sort()) {
       if (!rule.specifier.test(spec)) continue;
       if (!rule.only.some((allowed) => file === allowed || file.startsWith(allowed))) {
         failures.push(`${file}: ${spec} is only allowed in ${rule.only.join(", ")}`);
-      } else if (typeOnly === undefined && rule.typeOnlyIn?.includes(file)) {
+      } else if (typeOnly === undefined && rule.typeOnlyIn?.some((allowed) => file.startsWith(allowed))) {
         failures.push(`${file}: ${spec} must be import type`);
       }
     }
