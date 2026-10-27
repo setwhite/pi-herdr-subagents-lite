@@ -1,10 +1,10 @@
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import type { Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
-import { drain, hasInbox } from "../inbox/index.ts";
+import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import { createRunService, type RunService } from "../run/index.ts";
-import type { SessionReader } from "../session/index.ts";
+import type { SessionReader } from "../session-file/index.ts";
 import { createTool, type ResultMessage, type SubagentTool, sendResult } from "../tool/index.ts";
 
 export interface ExtensionDeps {
@@ -40,14 +40,12 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
   return (pi: ExtensionRegistrar) => {
     const config = deps.loadConfig();
     let service: RunService | undefined;
-    let inboxTimer: ReturnType<typeof setInterval> | undefined;
+    let stopPump: (() => void) | undefined;
     let inboxFailures = 0;
 
     const stopInbox = () => {
-      if (inboxTimer !== undefined) {
-        clearInterval(inboxTimer);
-        inboxTimer = undefined;
-      }
+      stopPump?.();
+      stopPump = undefined;
     };
 
     const startInbox = (ctx: SessionContext) => {
@@ -56,14 +54,17 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         return;
       }
       inboxFailures = 0;
-      inboxTimer = setInterval(() => {
-        try {
-          drain(sessionFile, (text) => {
-            const options = ctx.isIdle() ? undefined : { deliverAs: "steer" as const };
-            pi.sendUserMessage(text, options);
-          });
-          inboxFailures = 0;
-        } catch (error) {
+      const deliver = (text: string) => {
+        pi.sendUserMessage(text, ctx.isIdle() ? undefined : { deliverAs: "steer" });
+      };
+      stopPump = pumpInbox({
+        pollMs: config.inboxPollMs,
+        tick: () => drain(sessionFile, deliver),
+        onCycle(error) {
+          if (error === undefined) {
+            inboxFailures = 0;
+            return;
+          }
           inboxFailures += 1;
           if (inboxFailures < INBOX_FAILURE_LIMIT) {
             return;
@@ -71,9 +72,8 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
           stopInbox();
           const detail = error instanceof Error ? error.message : String(error);
           ctx.ui.notify(`inbox: stopped after ${INBOX_FAILURE_LIMIT} delivery failures: ${detail}`, "error");
-        }
-      }, config.inboxPollMs);
-      inboxTimer.unref?.();
+        },
+      });
     };
 
     const startService = (sources: ProfileSources) => {

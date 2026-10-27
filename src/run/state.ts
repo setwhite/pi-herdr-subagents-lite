@@ -1,6 +1,6 @@
 import type { HerdrHost } from "../herdr/index.ts";
 import type { ProfileCatalog } from "../profile/index.ts";
-import type { SessionReader } from "../session/index.ts";
+import type { SessionReader } from "../session-file/index.ts";
 import type { ResultHandler } from "./result.ts";
 
 export interface RunServiceDeps {

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { readLastAssistant } from "../src/session/index.ts";
+import { readLastAssistant } from "../src/session-file/index.ts";
 
 const tempDirs = new Set<string>();
 

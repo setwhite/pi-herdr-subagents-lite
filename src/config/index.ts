@@ -1,10 +1,30 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  BLOCKED_KINDS,
+  BRIDGE_KEYS,
+  boolean,
+  CONFIG_KEYS,
+  enumList,
+  integer,
+  isRaw,
+  object,
+  optionalString,
+  PROMPT_KEYS,
+  type Raw,
+  type Scope,
+  SHUTDOWN_REASONS,
+  stringArray,
+  toolName,
+  unknownKeys,
+} from "./schema.ts";
 
-export type BlockedKind = "custom" | "select" | "confirm" | "input" | "editor";
-export type ShutdownReason = "new" | "resume" | "fork" | "quit" | "reload";
+export { isRaw, type Raw } from "./schema.ts";
 
-export interface PromptOverrides {
+type BlockedKind = (typeof BLOCKED_KINDS)[number];
+type ShutdownReason = (typeof SHUTDOWN_REASONS)[number];
+
+interface PromptOverrides {
   description?: string;
   snippet?: string;
   guidelines?: string[];
@@ -20,135 +40,6 @@ export interface Config {
   inboxPollMs: number;
   prompts: PromptOverrides;
   bridge: { enabled: boolean; blockedOn: BlockedKind[] };
-}
-
-const CONFIG_KEYS = [
-  "enabled",
-  "toolName",
-  "maxConcurrent",
-  "maxResultChars",
-  "aggregateWindowMs",
-  "closeChildrenOn",
-  "inboxPollMs",
-  "prompts",
-  "bridge",
-];
-const BRIDGE_KEYS = ["enabled", "blockedOn"];
-const PROMPT_KEYS = ["description", "snippet", "guidelines"];
-const BLOCKED_KINDS: readonly BlockedKind[] = ["custom", "select", "confirm", "input", "editor"];
-const SHUTDOWN_REASONS: readonly ShutdownReason[] = ["new", "resume", "fork", "quit", "reload"];
-const TOOL_NAME = /^[a-z][a-z0-9_]{0,31}$/;
-
-type Raw = Record<string, unknown>;
-
-interface Scope {
-  raw: Raw;
-  prefix: string;
-  problems: string[];
-}
-
-function isRaw(value: unknown): value is Raw {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function object(scope: Scope, key: string, known: string[]): Scope {
-  const value = scope.raw[key];
-  if (value !== undefined && !isRaw(value)) {
-    scope.problems.push(`${scope.prefix}${key}: expected object`);
-  }
-  const nested: Scope = { raw: isRaw(value) ? value : {}, prefix: `${scope.prefix}${key}.`, problems: scope.problems };
-  unknownKeys(nested, known);
-  return nested;
-}
-
-function unknownKeys(scope: Scope, known: string[]): void {
-  for (const key of Object.keys(scope.raw)) {
-    if (!known.includes(key)) {
-      scope.problems.push(`${scope.prefix}${key}: unknown key`);
-    }
-  }
-}
-
-function integer(scope: Scope, key: string, fallback: number, min: number, max: number): number {
-  const value = scope.raw[key];
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "number" || !Number.isInteger(value)) {
-    scope.problems.push(`${scope.prefix}${key}: expected integer`);
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, value));
-}
-
-function boolean(scope: Scope, key: string, fallback: boolean): boolean {
-  const value = scope.raw[key];
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "boolean") {
-    scope.problems.push(`${scope.prefix}${key}: expected boolean`);
-    return fallback;
-  }
-  return value;
-}
-
-function optionalString(scope: Scope, key: string): string | undefined {
-  const value = scope.raw[key];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    scope.problems.push(`${scope.prefix}${key}: expected string`);
-    return undefined;
-  }
-  return value;
-}
-
-function stringArray(scope: Scope, key: string): string[] | undefined {
-  const value = scope.raw[key];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-    return value as string[];
-  }
-  scope.problems.push(`${scope.prefix}${key}: expected string array`);
-  return undefined;
-}
-
-function toolName(scope: Scope): string {
-  const value = optionalString(scope, "toolName");
-  if (value === undefined) {
-    return "subagent";
-  }
-  if (!TOOL_NAME.test(value)) {
-    scope.problems.push(`toolName: expected a name matching ${TOOL_NAME.source}`);
-    return "subagent";
-  }
-  return value;
-}
-
-function enumList<T extends string>(scope: Scope, key: string, allowed: readonly T[], fallback: readonly T[]): T[] {
-  const value = scope.raw[key];
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    scope.problems.push(`${scope.prefix}${key}: expected array`);
-    return [...fallback];
-  }
-  const items: T[] = [];
-  for (const item of value) {
-    if (typeof item === "string" && (allowed as readonly string[]).includes(item)) {
-      items.push(item as T);
-    } else {
-      scope.problems.push(
-        `${scope.prefix}${key}: unknown value ${JSON.stringify(item)}; allowed: ${allowed.join(", ")}`,
-      );
-    }
-  }
-  return items;
 }
 
 function promptOverrides(scope: Scope): PromptOverrides {

@@ -65,3 +65,5 @@ export function drain(sessionFile: string, deliver: (text: string) => void): num
   }
   return delivered;
 }
+
+export { pumpInbox } from "./pump.ts";

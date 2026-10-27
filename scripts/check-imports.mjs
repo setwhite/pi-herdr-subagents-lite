@@ -8,14 +8,14 @@ import { join, relative } from "node:path";
 
 /** 允许的跨模块边：模块 -> 它可以直接 import 的模块（同模块内部不查）。 */
 const EDGES = {
-  ".": ["config", "extension", "herdr", "profile", "session"],
+  ".": ["config", "extension", "herdr", "profile", "session-file"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "run", "herdr", "session", "inbox", "tool"],
+  extension: ["config", "extension", "profile", "run", "herdr", "session-file", "inbox", "tool"],
   tool: ["config", "profile", "run", "tool"],
-  run: ["config", "run", "profile", "herdr", "session", "inbox"],
+  run: ["config", "run", "profile", "herdr", "session-file", "inbox"],
   profile: ["config", "profile"],
   herdr: ["herdr"],
-  session: ["session"],
+  "session-file": ["session-file"],
   inbox: ["inbox"],
 };
 
@@ -23,18 +23,18 @@ const EDGES = {
 const SINGLE_IMPORT = [
   {
     specifier: /^@earendil-works\/pi-coding-agent$/,
-    only: ["src/index.ts", "src/extension/index.ts", "src/profile/index.ts", "src/tool/"],
+    only: ["src/index.ts", "src/extension/index.ts", "src/profile/", "src/tool/"],
     typeOnlyIn: ["src/index.ts", "src/extension/index.ts", "src/tool/"],
   },
   { specifier: /^typebox$/, only: ["src/tool/schema.ts"] },
-  { specifier: /^node:child_process$/, only: ["src/herdr/index.ts"] },
+  { specifier: /^node:child_process$/, only: ["src/herdr/cli.ts"] },
   {
     specifier: /^node:fs(\/|$)/,
     only: [
       "src/config/index.ts",
       "src/inbox/index.ts",
-      "src/profile/index.ts",
-      "src/session/index.ts",
+      "src/profile/layers.ts",
+      "src/session-file/index.ts",
       "src/run/start.ts",
       "src/run/send.ts",
     ],
@@ -45,14 +45,15 @@ const SINGLE_IMPORT = [
       "src/config/index.ts",
       "src/inbox/index.ts",
       "src/profile/index.ts",
+      "src/profile/layers.ts",
       "src/run/index.ts",
       "src/run/start.ts",
       "src/run/spawn-args.ts",
     ],
   },
   {
-    specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/profile/index.ts", "src/run/", "src/tool/"],
+    specifier: /^\.\.\/(config|herdr|profile|session-file)\/index\.ts$/,
+    only: ["src/extension/index.ts", "src/profile/", "src/run/", "src/tool/"],
     typeOnlyIn: ["src/extension/index.ts", "src/tool/"],
   },
 ];

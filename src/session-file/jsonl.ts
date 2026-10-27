@@ -1,11 +1,7 @@
-import { readFileSync } from "node:fs";
-
 export interface SessionSnapshot {
   text: string | null;
   pendingToolCall: boolean;
 }
-
-export type SessionReader = (path: string) => SessionSnapshot;
 
 interface SessionEntry {
   type?: unknown;
@@ -47,14 +43,7 @@ function textOf(entry: SessionEntry): string | null {
   return text === "" ? null : text;
 }
 
-export const readLastAssistant: SessionReader = (path) => {
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return { text: null, pendingToolCall: false };
-  }
-
+export function parseLastAssistant(raw: string): SessionSnapshot {
   const lines = raw.split("\n");
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index]?.trim();
@@ -77,4 +66,4 @@ export const readLastAssistant: SessionReader = (path) => {
     return { text: textOf(entry), pendingToolCall: hasToolCall(entry) };
   }
   return { text: null, pendingToolCall: false };
-};
+}

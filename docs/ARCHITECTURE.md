@@ -4,7 +4,7 @@
 
 本文只写模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则；内部 API 以代码与类型为准。v1 对外契约见 [v1 契约](specs/0001-v1-contract.md)，理由见 [决策](decisions/README.md)，任务与进度见 [任务台账](todos/README.md)。
 
-**迁移状态**：第 2、3 节的表是目标结构，按 T19–T21 迁移。迁移完成前，`scripts/check-imports.mjs` 的 `EDGES` 是实际的依赖边。
+**迁移状态**：第 2、3 节的表是目标结构；第 2 节「迁移」列是每个模块的落地任务，未标任务的已就位。迁移完成前，`scripts/check-imports.mjs` 的 `EDGES` 是实际的依赖边。
 
 ## 1. 命名与拆分规则
 
@@ -22,11 +22,11 @@
 | `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` | 同，瘦身 |
 | `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
 | `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）；`close.ts`（T22）、`aggregate.ts`（T30） | 原 `subagent`（T19） |
-| `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
-| `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`writeExitReceipt`、`readExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
+| `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
+| `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`（`writeExitReceipt`、`readExitReceipt` 随 T24） | `index.ts` `jsonl.ts`（`receipt.ts` 随 T24） | 原 `session`（T21） |
 | `inbox` | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
-| `config` | 全局配置读取与严格校验 | `loadConfig`、`dataDir` | `index.ts` `schema.ts` | 同，拆文件（T21） |
-| `profile` | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
+| `config` | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
+| `profile` | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
 | `bridge` | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` | 从 `extension` 拆（T28） |
 
 入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
@@ -61,9 +61,9 @@ profile -> config
 
 - 只能沿箭头依赖，禁止反向 import；`config`、`herdr`、`session-file`、`inbox` 是叶子。
 - `config` 只认 Node fs/path/os，不 import pi；配置错误的唯一表达是一条带字段名的 Error。
-- `inbox` 只认 Node fs/path/crypto，不解析消息内容，不记投递失败次数；泵的投递函数由调用方注入。
+- `inbox` 只认 Node fs/path/crypto，不解析消息内容，不记投递失败次数；泵的每拍动作由调用方注入。
 - `run` 不 import pi；`extension` 不 import 真实 CLI 或 fs；只有 `index.ts` 同时认识真实适配器与 pi。
-- 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts`、`src/tool/index.ts` 只做 type-only import，在 `src/profile/index.ts` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
+- 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts`、`src/tool/index.ts` 只做 type-only import，在 `src/profile/` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
 - 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`；脚本只校验源码，不比对本文。
 
 ## 4. 模块说明
@@ -86,11 +86,11 @@ run 生命周期内核。run 先解析 profile（缺 → `unknown_profile`，坏
 
 ### session-file
 
-`readLastAssistant` 返回最后一条 assistant 的 `{ text, pendingToolCall }`；文件读不到、坏行、没有文本时 text 为 null，不重试、不 sleep。`.exit` 回执只有 `{ reason }`：子进程 `session_shutdown` 时写，父侧用它区分「正常退出」与「没走 shutdown 的崩溃」；正文仍从 session 尾部读。
+`readLastAssistant` 返回最后一条 assistant 的 `{ text, pendingToolCall }`；文件读不到、坏行、没有文本时 text 为 null，不重试、不 sleep。
 
 ### inbox
 
-`<childSession>.inbox/` 的唯一读写口。`enqueue` 先写临时文件再 rename 成按进程内单调时间排序的 `.md`；`drain` 按文件名顺序逐条投递，成功后 rename 到 `.delivered/`，回调抛错即停并留下该文件。消息前缀与失败上限不在这里。
+`<childSession>.inbox/` 的唯一读写口。`enqueue` 先写临时文件再 rename 成按进程内单调时间排序的 `.md`；`drain` 按文件名顺序逐条投递，成功后 rename 到 `.delivered/`，回调抛错即停并留下该文件。`pumpInbox` 每 `pollMs` 调一次调用方注入的 `tick`，每拍结果经 `onCycle` 交回调用方；消息前缀、失败计数与上限都不在这里。
 
 ### config / profile
 
