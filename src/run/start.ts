@@ -7,7 +7,7 @@ import { spawnFailed, ToolError } from "./errors.ts";
 import { paneLabel, profileSlug } from "./naming.ts";
 import { schedulePoll } from "./poll.ts";
 import { resolveProfile } from "./resolve.ts";
-import { agentArgs, briefText, profileCwd } from "./spawn-args.ts";
+import { AUTO_EXIT_ENV, agentArgs, briefText, profileCwd } from "./spawn-args.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -20,7 +20,11 @@ export interface RunStarted {
 }
 
 export async function createPane(state: RunState, run: RunRecord, cwd: string, label: string): Promise<void> {
-  const tab = await state.host.createTab({ cwd, label: run.name });
+  const tab = await state.host.createTab({
+    cwd,
+    label: run.name,
+    env: { [AUTO_EXIT_ENV]: run.autoExit ? "1" : "0" },
+  });
   run.tabId = tab.tabId;
   run.paneId = tab.paneId;
   await state.host.renamePane({ paneId: tab.paneId, label });

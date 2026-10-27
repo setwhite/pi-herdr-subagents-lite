@@ -43,14 +43,34 @@ function fakePi(events: string[] = []) {
   const tools: SubagentTool[] = [];
   const startHandlers: SessionStartHandler[] = [];
   const shutdownHandlers: Array<() => void> = [];
+  const settledHandlers: Array<(event: { type: "agent_settled" }, ctx: SessionContext) => void> = [];
+  const promptStartHandlers: Array<() => void> = [];
+  const promptEndHandlers: Array<() => void> = [];
   const sent: SentMessage[] = [];
   const userMessages: SentUserMessage[] = [];
   const notifications: Notification[] = [];
+  let currentSession: SessionContext | undefined;
+  let shutdowns = 0;
   let sendUserMessageImpl: (content: string) => void = () => {};
   const pi: ExtensionRegistrar = {
-    on(event: "session_start" | "session_shutdown", handler: SessionStartHandler | (() => void)) {
+    on(
+      event: "session_start" | "session_shutdown" | "agent_settled" | "ui_prompt_start" | "ui_prompt_end",
+      handler: SessionStartHandler | ((event: { type: "agent_settled" }, ctx: SessionContext) => void) | (() => void),
+    ) {
       if (event === "session_start") {
         startHandlers.push(handler as SessionStartHandler);
+        return;
+      }
+      if (event === "agent_settled") {
+        settledHandlers.push(handler as (event: { type: "agent_settled" }, ctx: SessionContext) => void);
+        return;
+      }
+      if (event === "ui_prompt_start") {
+        promptStartHandlers.push(handler as () => void);
+        return;
+      }
+      if (event === "ui_prompt_end") {
+        promptEndHandlers.push(handler as () => void);
         return;
       }
       shutdownHandlers.push(handler as () => void);
@@ -78,8 +98,12 @@ function fakePi(events: string[] = []) {
           notifications.push({ message, type });
         },
       },
+      shutdown: () => {
+        shutdowns += 1;
+      },
       ...ctx,
     };
+    currentSession = session;
     for (const handler of startHandlers) {
       handler({ type: "session_start", reason: "startup" }, session);
     }
@@ -89,13 +113,32 @@ function fakePi(events: string[] = []) {
       handler();
     }
   };
+  const settle = () => {
+    if (!currentSession) {
+      throw new Error("no session");
+    }
+    for (const handler of settledHandlers) {
+      handler({ type: "agent_settled" }, currentSession);
+    }
+  };
+  const prompt = (pair: "start" | "end") => {
+    for (const handler of pair === "start" ? promptStartHandlers : promptEndHandlers) {
+      handler();
+    }
+  };
   return {
+    get shutdowns() {
+      return shutdowns;
+    },
     notifications,
     pi,
+    promptEnd: () => prompt("end"),
+    promptStart: () => prompt("start"),
     sent,
     setSendUserMessage(impl: (content: string) => void) {
       sendUserMessageImpl = impl;
     },
+    settle,
     shutdownSession,
     startSession,
     tools,
@@ -112,7 +155,7 @@ function fakeHost(
   options: { events?: string[]; failures?: FakeHostFailures; closeTab?: () => "closed" | "kept" | Error } = {},
 ) {
   const calls: string[] = options.events ?? [];
-  const tabs: Array<{ cwd: string; label: string }> = [];
+  const tabs: Array<{ cwd: string; label: string; env: Record<string, string> }> = [];
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
   const renamedPanes: Array<{ paneId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
@@ -272,6 +315,19 @@ function writeInbox(sessionFile: string, files: Array<[name: string, text: strin
   }
 }
 
+function loadAutoExitChild(options: { env?: string | null } = {}) {
+  if (options.env === null) {
+    delete process.env.PI_SUBAGENT_AUTO_EXIT;
+  } else {
+    process.env.PI_SUBAGENT_AUTO_EXIT = options.env ?? "1";
+  }
+  const sessionFile = childSessionFile();
+  const fake = fakePi();
+  registerExtension(fake.pi, fakeHost().host);
+  fake.startSession({ sessionManager: { getSessionFile: () => sessionFile } });
+  return { fake, sessionFile };
+}
+
 function loadChild(sessionFile: string | undefined, options: { isIdle?: () => boolean } = {}) {
   const fake = fakePi();
   registerExtension(fake.pi, fakeHost().host);
@@ -390,6 +446,7 @@ const tempDirs = new Set<string>();
 
 beforeEach(() => {
   delete process.env.HERDR_ENV;
+  delete process.env.PI_SUBAGENT_AUTO_EXIT;
   agentDir = mkdtempSync(join(tmpdir(), "pi-herdr-agent-"));
   projectDir = mkdtempSync(join(tmpdir(), "pi-herdr-project-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -404,6 +461,7 @@ afterEach(async () => {
   tempDirs.clear();
   delete process.env.HERDR_ENV;
   delete process.env.PI_CODING_AGENT_DIR;
+  delete process.env.PI_SUBAGENT_AUTO_EXIT;
 });
 
 it("accepts run and send", () => {
@@ -505,7 +563,7 @@ it("launches a worker", async () => {
   const { agent, started } = await startRun(fake);
 
   expect(started).toMatchObject({ state: "running", name: "worker-1", paneId: "w1:p1" });
-  expect(fake.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1" }]);
+  expect(fake.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } }]);
   expect(agent).toMatchObject({ name: "worker-1", paneId: started.paneId, sessionFile: started.sessionFile });
   const brief = await readFile(agent.briefFile, "utf8");
   expect(brief).toContain("inspect the repo");
@@ -563,14 +621,16 @@ it("uses the profile cwd", async () => {
 
   await startRun(nested);
 
-  expect(nested.tabs).toEqual([{ cwd: join(process.cwd(), "sub"), label: "worker-1" }]);
+  expect(nested.tabs).toEqual([
+    { cwd: join(process.cwd(), "sub"), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } },
+  ]);
 
   writeProfile("worker.md", "---\ndescription: no cwd\n---\n\nWorker body.\n");
   const plain = fakeHost();
 
   await startRun(plain);
 
-  expect(plain.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1" }]);
+  expect(plain.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } }]);
 });
 
 it("passes model and thinking", async () => {
@@ -663,6 +723,18 @@ it("labels the pane with the first task line", async () => {
   expect(long.renamedPanes).toEqual([{ paneId: "w1:p1", label: "x".repeat(32) }]);
 });
 
+it("sets the auto-exit pane env", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\nauto-exit: true\n---\n\nExplore body.\n");
+  const fake = fakeHost();
+  const { tool } = loadSession(fake.host);
+
+  await runTask(tool, "worker task");
+  await runTask(tool, "explore task", "explore");
+
+  expect(fake.tabs.map((tab) => tab.env)).toEqual([{ PI_SUBAGENT_AUTO_EXIT: "0" }, { PI_SUBAGENT_AUTO_EXIT: "1" }]);
+});
+
 it("queues a message for a live child", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
@@ -714,7 +786,7 @@ it("opens a new tab when the pane is gone", async () => {
     name: "explore-1",
     paneId: "w1:p2",
   });
-  expect(fake.tabs.at(-1)).toEqual({ cwd: process.cwd(), label: "explore-1" });
+  expect(fake.tabs.at(-1)).toEqual({ cwd: process.cwd(), label: "explore-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } });
   expect(fake.resumed[0]?.paneId).toBe("w1:p2");
   expect(fake.resumed[0]?.sessionFile).toBe(started.sessionFile);
 });
@@ -1521,6 +1593,30 @@ it("stops after session shutdown", async () => {
 
   expect(sent).toHaveLength(0);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("shuts down after settle when auto-exit is on", async () => {
+  const settled = loadAutoExitChild();
+  settled.fake.settle();
+  expect(settled.fake.shutdowns).toBe(1);
+
+  const queued = loadAutoExitChild();
+  writeInbox(queued.sessionFile, [["a.md", "more work"]]);
+  queued.fake.settle();
+  expect(queued.fake.shutdowns).toBe(0);
+
+  const prompted = loadAutoExitChild();
+  prompted.fake.promptStart();
+  prompted.fake.settle();
+  expect(prompted.fake.shutdowns).toBe(0);
+});
+
+it("does not shut down without the env", async () => {
+  const child = loadAutoExitChild({ env: null });
+
+  child.fake.settle();
+
+  expect(child.fake.shutdowns).toBe(0);
 });
 
 it("delivers inbox messages in order", async () => {

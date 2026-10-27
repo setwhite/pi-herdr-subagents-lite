@@ -28,6 +28,23 @@ export function removeInbox(sessionFile: string): void {
   rmSync(inboxDir(sessionFile), { recursive: true, force: true });
 }
 
+function pendingNames(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+      .filter((name) => name.endsWith(MESSAGE_SUFFIX))
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export function inboxCount(sessionFile: string): number {
+  return pendingNames(inboxDir(sessionFile)).length;
+}
+
 export function enqueue(sessionFile: string, text: string): void {
   const dir = inboxDir(sessionFile);
   mkdirSync(dir, { recursive: true });
@@ -39,17 +56,7 @@ export function enqueue(sessionFile: string, text: string): void {
 
 export function drain(sessionFile: string, deliver: (text: string) => void): number {
   const dir = inboxDir(sessionFile);
-  let names: string[];
-  try {
-    names = readdirSync(dir)
-      .filter((name) => name.endsWith(MESSAGE_SUFFIX))
-      .sort();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return 0;
-    }
-    throw error;
-  }
+  const names = pendingNames(dir);
   if (names.length === 0) {
     return 0;
   }

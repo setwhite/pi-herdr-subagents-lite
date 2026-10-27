@@ -56,6 +56,7 @@ export async function send(state: RunState, name: string, message: string): Prom
   }
 
   const profile = resolveProfile(state.loadProfiles(), run.profileName);
+  run.autoExit = profile.autoExit;
   const cwd = profileCwd(profile);
   const identityFile = `${run.sessionFile}.identity.md`;
   const previousPaneId = run.paneId;
@@ -90,7 +91,6 @@ export async function send(state: RunState, name: string, message: string): Prom
   }
 
   run.live = true;
-  run.autoExit = profile.autoExit;
   run.pollFailures = 0;
   schedulePoll(state, run);
   await enqueue(run.sessionFile, inboxMessage(message));

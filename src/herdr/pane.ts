@@ -5,6 +5,16 @@ export interface CreatedTab {
   paneId: string;
 }
 
+export interface CreateTabInput {
+  cwd: string;
+  label: string;
+  env: Record<string, string>;
+}
+
+function envArgs(env: Record<string, string>): string[] {
+  return Object.entries(env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
+}
+
 export interface CloseTabInput {
   tabId: string;
   paneId: string;
@@ -33,7 +43,7 @@ interface PaneInfo {
 
 export function createPaneCommands(exec: ExecHerdr) {
   return {
-    async createTab({ cwd, label }: { cwd: string; label: string }): Promise<CreatedTab> {
+    async createTab({ cwd, label, env }: CreateTabInput): Promise<CreatedTab> {
       const result = await exec<{ tab: TabInfo; root_pane: PaneInfo }>([
         "tab",
         "create",
@@ -41,6 +51,7 @@ export function createPaneCommands(exec: ExecHerdr) {
         cwd,
         "--label",
         label,
+        ...envArgs(env),
         "--no-focus",
       ]);
       return { tabId: result.tab.tab_id, paneId: result.root_pane.pane_id };

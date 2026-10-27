@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
 import { type Profile, skillPath } from "../profile/index.ts";
 
+export const AUTO_EXIT_ENV = "PI_SUBAGENT_AUTO_EXIT";
+
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
 Do not spawn subagents. When you need a decision, use ask_user_question if it is available;
 the human answers in your pane. Otherwise state the decision in your final answer.

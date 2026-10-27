@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { createInbox, drain, enqueue, hasInbox, removeInbox } from "../src/inbox/index.ts";
+import { createInbox, drain, enqueue, hasInbox, inboxCount, removeInbox } from "../src/inbox/index.ts";
 
 let root = "";
 
@@ -78,6 +78,18 @@ it("archives delivered messages under .delivered", async () => {
   const archived = readdirSync(join(inboxDir(), ".delivered")).filter((entry) => entry.endsWith(".md"));
   expect(archived).toHaveLength(1);
   expect(await readFile(join(inboxDir(), ".delivered", archived[0] ?? ""), "utf8")).toBe("one");
+});
+
+it("counts only pending messages", async () => {
+  await createInbox(sessionFile());
+  await enqueue(sessionFile(), "first");
+  await enqueue(sessionFile(), "second");
+
+  expect(inboxCount(sessionFile())).toBe(2);
+
+  drain(sessionFile(), () => {});
+
+  expect(inboxCount(sessionFile())).toBe(0);
 });
 
 it("keeps a failed message and stops the drain", async () => {

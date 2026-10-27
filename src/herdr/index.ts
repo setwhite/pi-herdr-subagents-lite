@@ -1,13 +1,13 @@
 import type { AgentSnapshot, ResumeAgentInput, StartAgentInput } from "./agent.ts";
 import { createAgentCommands } from "./agent.ts";
 import { execHerdrJson, HerdrHostError } from "./cli.ts";
-import type { CloseTabInput, CreatedTab, RenamePaneInput, RenameTabInput } from "./pane.ts";
+import type { CloseTabInput, CreatedTab, CreateTabInput, RenamePaneInput, RenameTabInput } from "./pane.ts";
 import { createPaneCommands } from "./pane.ts";
 
 export { HerdrHostError };
 
 export interface HerdrHost {
-  createTab(input: { cwd: string; label: string }): Promise<CreatedTab>;
+  createTab(input: CreateTabInput): Promise<CreatedTab>;
   renameTab(input: RenameTabInput): Promise<void>;
   renamePane(input: RenamePaneInput): Promise<void>;
   startAgent(input: StartAgentInput): Promise<void>;
