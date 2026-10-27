@@ -1,7 +1,7 @@
 
 # v1 契约
 
-v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前实现范围见 [任务台账](../todos/README.md)。决策理由见 [决策](../decisions/README.md)，提示词与简报模板见 [PROMPTS](../PROMPTS.md)。
+v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前实现范围见 [任务台账](../todos/README.md)。决策理由见 [决策](../decisions/README.md)，工具文案见 `src/tool/text.ts`。
 
 一句话：一个工具，两个 action（`run` / `send`）；结果异步；子代理跑在 herdr pane；fresh only。
 
@@ -24,7 +24,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `aggregateWindowMs` | integer | 越界 clamp | 0 = 不聚合，逐个回投 |
 | `closeChildrenOn` | string[] | `new` / `resume` / `fork` / `quit` / `reload` | 空 = 不关；命中 `session_shutdown.reason` 时关该父会话的子 tab |
 | `inboxPollMs` | integer | 越界 clamp | 子侧 inbox 轮询间隔 |
-| `prompts` | object | — | 提示词覆盖，见 [PROMPTS](../PROMPTS.md) |
+| `prompts` | object | — | 提示词覆盖；键与展开见 `src/tool/text.ts` |
 | `bridge` | object | — | 见第 7 节 |
 
 完成后的关闭由 profile 的 `auto-exit` 决定，见第 2 节；没有全局开关。保留的 done 子代理仍占一个槽；要释放就设 `auto-exit: true` 或人工关 tab。
@@ -61,7 +61,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `tools` | string | pi 默认 | 纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = `--no-skills`，不加载 skill；非空列表 = `--no-skills` + 每项解析为 `<agent-dir>/skills/<name>` 并用 `--skill` 传入，只加载指定项；列表项是名字，不带 `+` / `-` |
 | `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动；与父 cwd 不同时在新 workspace 里开 tab，相同则在同 workspace 开新 tab |
-| `system-prompt` | string | append | append / replace / task；省略 = append，见 [PROMPTS](../PROMPTS.md) |
+| `system-prompt` | string | append | append / replace / task；省略 = append，见 [D51](../decisions/D51-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
 
@@ -78,7 +78,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 |---|---|
 | name | `config.toolName`，默认 `subagent` |
 | label | `Subagent` |
-| description / snippet / guidelines | 见 [PROMPTS](../PROMPTS.md)；profile 列表在注册时展开 |
+| description / snippet / guidelines | 见 `src/tool/text.ts`；profile 列表在注册时展开 |
 
 参数：
 
@@ -86,7 +86,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 |---|---|---|---|---|
 | `action` | run / send | 是 | run / send | 选择动作 |
 | `profile` | run | 是 | string | profile 名；未知时报错并列出可用 profile |
-| `task` | run | 是 | string | 自包含任务；原样写入 brief |
+| `task` | run | 是 | string | 自包含任务；原样写入 brief，不要再写 `# Task` 段；brief 会落盘，不写密钥 |
 | `name` | send | 是 | string | run 返回的子代理名 |
 | `message` | send | 是 | string | 新消息 |
 

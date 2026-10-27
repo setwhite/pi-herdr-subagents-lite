@@ -43,9 +43,8 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 
 ## 文档
 
-- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块说明。
+- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块文档索引。
 - [v1 契约](docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
-- [PROMPTS](docs/PROMPTS.md) — 工具文案、任务简报、子代理提示词。
 - [决策](docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
 - [GLOSSARY](docs/GLOSSARY.md) — 术语。
 - [herdr E2E](docs/e2e/herdr.md) — 当前的手工回归 runbook。

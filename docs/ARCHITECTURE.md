@@ -19,14 +19,14 @@
 | 模块 | 职责 | 对外 | 文件 | 迁移 |
 |---|---|---|---|---|
 | `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
-| `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` | 同，瘦身 |
-| `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
-| `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）、`find.ts`（T26）；`aggregate.ts`（T30） | 原 `subagent`（T19） |
-| `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
-| `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
-| `inbox` | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
-| `config` | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
-| `profile` | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
+| [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` | 同，瘦身 |
+| [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
+| [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）、`find.ts`（T26）；`aggregate.ts`（T30） | 原 `subagent`（T19） |
+| [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
+| [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
+| [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
+| [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
+| [`profile`](modules/profile.md) | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
 | `bridge` | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` | 从 `extension` 拆（T28） |
 
 入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
@@ -68,45 +68,13 @@ profile -> config
 
 ## 4. 模块说明
 
-### extension
-
-pi 适配层，不持有 run 状态。`session_start` 装配 run 服务、按 `config.enabled` 注册工具、启动子侧 inbox 泵。工具的 `HERDR_ENV` 检查、文案展开与错误渲染在 `tool`，extension 只注入配置、profile 与 service 取用函数。
-
-### tool
-
-模型的唯一入口：两个 action、一份参数 schema、一份文案。异步结果与提问的信封（`subagent_result`、`subagent_question`，customType、display、triggerTurn、头部格式）在这里；结果正文与截断属于 `run`。
-
-### run
-
-run 生命周期内核。run 先解析 profile（缺 → `unknown_profile`，坏字段 → `profile_invalid`，都在占槽之前），再占槽、命名、建 pane、启动、投 brief。轮询每拍一次 `agent list` 快照，按 `pane_id` 与 name 定位 run，比较完成序号，读子 session 尾部，投递后前移游标。`send` 按名字查记录：活着写 inbox，已退出则重启续聊。`close` 决定何时关 tab：只有 `auto-exit: true` 与命中 `closeChildrenOn` 才关。
-
-### herdr
-
-`HerdrHost` 端口与唯一真实适配器。CLI 调用全部走 `execFile` 的 argv，不经 shell；解析 JSON；`agent_name_taken` 归一成 `name_taken`，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时。`resumeAgent` 只做 `agent start`。`listAgents` 一次 `agent list` 覆盖所有 agent；字段依据见 `docs/research/herdr-agent-list.md`。
-
-### session-file
-
-`readLastAssistant` 返回最后一条 assistant 的 `{ text, pendingToolCall }`；文件读不到、坏行、没有文本时 text 为 null，不重试、不 sleep。
-
-`writeExitReceipt` 写 `<sessionFile>.exit` 的 `{ reason }`；`readExitReceipt` 读回执，缺失或坏 JSON 返回 null。
-
-### inbox
-
-`<childSession>.inbox/` 的唯一读写口。`enqueue` 先写临时文件再 rename 成按进程内单调时间排序的 `.md`；`drain` 按文件名顺序逐条投递，成功后 rename 到 `.delivered/`，回调抛错即停并留下该文件。`pumpInbox` 每 `pollMs` 调一次调用方注入的 `tick`，每拍结果经 `onCycle` 交回调用方；消息前缀、失败计数与上限都不在这里。
-
-### config / profile
-
-`loadConfig` 读一次 `<data-dir>/config.json`：不存在取默认值，数值越界静默 clamp，未知键、类型错、枚举错合并成一条带路径与字段名的错误；无效时不注册工具。`loadProfiles` 读全局与受信项目的 `profiles/*.md`，同名项目覆盖全局；坏字段只跳过该 profile，返回 `{ profiles, problems }`，模块自己不抛错。
-
-### bridge
-
-同一扩展内的监听器，不单独入口。`ui_prompt_start` / `ui_prompt_end` → emit `herdr:blocked` `{ active, label }`；`label` 取 `title`，没有则取 `kind`。`bridge.enabled: false` 或 `blockedOn: []` 不上报。
+每个模块的用法与取舍见 `docs/modules/<module>.md`，入口是上表的模块链接；`bridge` 还没实现，任务见 [T28](todos/T28.md)。
 
 ## 5. 测试 seam
 
 | seam | 用法 | 覆盖 |
 |---|---|---|
-| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、send 续聊与重启、结果消息、聚合、关闭 |
+| pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、send 续聊与重启、结果消息、关闭 |
 | `loadConfig` | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验 |
 | `loadProfiles` | 临时 agent 目录、临时项目目录 + 真实 fs | frontmatter、字段校验、坏字段、受信项目覆盖 |
 | `readLastAssistant` | 纯函数表驱动 | JSONL 解析边界 |
@@ -121,11 +89,11 @@ run 生命周期内核。run 先解析 profile（缺 → `unknown_profile`，坏
 | 文件 | 只写 | 不写 |
 |---|---|---|
 | `README.md` | 安装、用法、开发、文档索引 | 模块签名、选型理由 |
-| `docs/ARCHITECTURE.md` | 模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则 | 字段表、决策理由、进度 |
+| `docs/ARCHITECTURE.md` | 模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则、模块文档索引 | 字段表、决策理由、进度、模块用法 |
 | `docs/decisions/*.md` | 决策编号、理由、取消项、边界与验证；一条一份 | 字段表、配置/命令行 |
 | `docs/specs/*.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
-| `docs/PROMPTS.md` | 工具文案、任务简报、子代理 system prompt | 配置语义、结果协议 |
 | `docs/GLOSSARY.md` | 本扩展特有术语的唯一命名来源 | 实现细节 |
+| `docs/modules/*.md` | 单个模块的用法与取舍 | 依赖方向、契约字段表 |
 | `docs/e2e/herdr.md` | 当前手工 E2E runbook | 契约与理由 |
 | `docs/todos/*.md` | 任务台账、验收证据 | 契约与理由 |
 | `docs/audit/*.md` | 任务验收结论与证据 | 契约与理由 |
