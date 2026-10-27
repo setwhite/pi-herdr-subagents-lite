@@ -179,7 +179,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 
 ## 6. 结果消息
 
-完成检测：父侧每 1s 调一次 `herdr agent list`；按 run 的 `name` 过滤，`completion_seq` 大于该 run 的 `lastHandledSeq` 且状态为 `idle` / `done` 时读子 session 尾部，投递后把 `lastHandledSeq` 更新为该值。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `name` 不在列表里才算死亡。不订阅 herdr 事件。
+完成检测：父侧每 1s 调一次 `herdr agent list`；按 run 的 `pane_id` 定位、`name` 兜底，`completion_seq` 大于该 run 的 `lastHandledSeq` 且状态为 `idle` / `done` 时读子 session 尾部，投递后把 `lastHandledSeq` 更新为该值。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。不订阅 herdr 事件。
 
 异步结果是一条 `subagent_result` 自定义消息；父模型看到的是文本，不是工具结果：
 

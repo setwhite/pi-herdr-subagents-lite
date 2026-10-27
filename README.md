@@ -52,3 +52,4 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 - [任务台账](docs/todos/README.md) — v1 里程碑。
 - [参考实现](docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
 - [herdr 恢复与状态实测](docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
+- [herdr agent list 实测](docs/research/herdr-agent-list.md) — `agent list` 原文与字段结论。
