@@ -16,17 +16,24 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | [D18](D18-no-headless.md) | 不做 headless 与 RPC |
 | [D41](D41-package-name.md) | 包名与发布方式 |
 
+## 架构
+
+| # | 决策 |
+|---|---|
+| [D55](D55-architecture-naming.md) | 模块命名与文件拆分 |
+
 ## 布局与启动
 
 | # | 决策 |
 |---|---|
 | [D22](D22-tab-placement.md) | 新 tab 或新 workspace |
 | [D23](D23-start-then-prompt.md) | 先等 idle，再投 brief |
-| [D28](D28-close-on-done.md) | 完成关闭与父会话清理 |
+| [D28](D28-close-on-done.md) | 关闭由 auto-exit 与 closeChildrenOn 决定 |
 | [D47](D47-close-on-done-default-keep.md) | 完成默认保留 tab |
 | [D48](D48-close-children-on.md) | 父会话结束按 closeChildrenOn 清理 |
 | [D32](D32-death-detection.md) | died 判定以 agent list 消失为准 |
 | [D53](D53-session-dir.md) | 子 session 放在 agent dir |
+| [D56](D56-auto-exit-channel.md) | auto-exit 用 pane env 传 |
 
 ## 任务与上下文
 
