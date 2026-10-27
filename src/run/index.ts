@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { dataDir } from "../config/index.ts";
 import { agentDir } from "../profile/index.ts";
 import { createNamer } from "./naming.ts";
+import { stopPoll } from "./poll.ts";
 import type { ResultHandler } from "./result.ts";
 import { type SendResult, send } from "./send.ts";
 import { type RunStarted, start } from "./start.ts";
@@ -21,6 +22,7 @@ export function createRunService(deps: RunServiceDeps): RunService {
     sessionsDir: join(dataDir(agentDir()), "sessions"),
     runs: [],
     resultHandler: undefined,
+    pollBusy: false,
     nextName: createNamer(),
     active() {
       return state.runs.filter((run) => run.live).map((run) => run.name);
@@ -61,6 +63,7 @@ export function createRunService(deps: RunServiceDeps): RunService {
       state.resultHandler = handler;
     },
     shutdown() {
+      stopPoll(state);
       for (const run of state.runs) {
         state.settle(run);
       }

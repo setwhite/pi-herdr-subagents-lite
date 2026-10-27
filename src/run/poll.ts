@@ -1,7 +1,8 @@
-import type { AgentSnapshot } from "../herdr/index.ts";
+import type { AgentEntry } from "../herdr/index.ts";
 import { closeTab, shouldClose } from "./close.ts";
-import type { DoneResult, RunResult, UnknownReason, UnknownResult } from "./result.ts";
-import { resultText } from "./result.ts";
+import { findAgent } from "./find.ts";
+import type { RunResult } from "./result.ts";
+import { doneResult, unknownResult } from "./result.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
 const POLL_INTERVAL_MS = 1000;
@@ -9,47 +10,67 @@ const POLL_FAILURE_LIMIT = 3;
 const READ_ATTEMPTS = 3;
 const READ_RETRY_DELAY_MS = 200;
 
-export function schedulePoll(state: RunState, run: RunRecord): void {
-  state.schedule(run, POLL_INTERVAL_MS, () => void poll(state, run));
+export function ensurePoll(state: RunState): void {
+  if (state.pollTimer !== undefined || state.pollBusy) {
+    return;
+  }
+  if (!state.runs.some((run) => run.live)) {
+    return;
+  }
+  state.pollTimer = setTimeout(() => void tick(state), POLL_INTERVAL_MS);
+  state.pollTimer.unref?.();
 }
 
-async function poll(state: RunState, run: RunRecord) {
-  run.timer = undefined;
-  if (!run.live) {
-    return;
+export function stopPoll(state: RunState): void {
+  if (state.pollTimer !== undefined) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = undefined;
   }
+}
 
-  let snapshot: AgentSnapshot | null;
+async function tick(state: RunState): Promise<void> {
+  state.pollTimer = undefined;
+  state.pollBusy = true;
   try {
-    snapshot = await state.host.getAgent(run.name);
+    await pollRuns(state);
   } catch {
-    if (!run.live) {
-      return;
+    // finish 已结算投递失败的 run；其余 run 下一拍继续。
+  } finally {
+    state.pollBusy = false;
+    ensurePoll(state);
+  }
+}
+
+async function pollRuns(state: RunState): Promise<void> {
+  let agents: AgentEntry[];
+  try {
+    agents = await state.host.listAgents();
+  } catch {
+    for (const run of [...state.runs]) {
+      if (!run.live) {
+        continue;
+      }
+      run.pollFailures += 1;
+      if (run.pollFailures >= POLL_FAILURE_LIMIT) {
+        await finish(state, run, unknownResult(run, "poll_failed"));
+      }
     }
-    run.pollFailures += 1;
-    if (run.pollFailures >= POLL_FAILURE_LIMIT) {
-      await finish(state, run, unknownResult(run, "poll_failed"));
-      return;
+    return;
+  }
+  for (const run of [...state.runs]) {
+    if (!run.live || run.timer !== undefined) {
+      continue;
     }
-    schedulePoll(state, run);
-    return;
+    run.pollFailures = 0;
+    const agent = findAgent(agents, run);
+    if (!agent) {
+      await exited(state, run);
+      continue;
+    }
+    if (agent.completionSeq > run.lastHandledSeq && (agent.status === "idle" || agent.status === "done")) {
+      await readResult(state, run, agent.completionSeq, 1);
+    }
   }
-  if (!run.live) {
-    return;
-  }
-  run.pollFailures = 0;
-
-  if (!snapshot) {
-    await exited(state, run);
-    return;
-  }
-
-  if (snapshot.completionSeq > run.lastHandledSeq && (snapshot.status === "idle" || snapshot.status === "done")) {
-    await readResult(state, run, snapshot.completionSeq, 1);
-    return;
-  }
-
-  schedulePoll(state, run);
 }
 
 async function readResult(state: RunState, run: RunRecord, seq: number, attempt: number) {
@@ -60,13 +81,13 @@ async function readResult(state: RunState, run: RunRecord, seq: number, attempt:
 
   const snapshot = state.readLastAssistant(run.sessionFile);
   if (snapshot.pendingToolCall) {
-    schedulePoll(state, run);
+    ensurePoll(state);
     return;
   }
   if (snapshot.text !== null) {
     run.lastHandledSeq = seq;
     run.lastDeliveredText = snapshot.text;
-    await finish(state, run, doneResult(state, run, snapshot.text));
+    await finish(state, run, doneResult(run, snapshot.text, state.maxResultChars));
     return;
   }
 
@@ -80,38 +101,21 @@ async function readResult(state: RunState, run: RunRecord, seq: number, attempt:
 }
 
 async function exited(state: RunState, run: RunRecord): Promise<void> {
+  if (!run.live) {
+    return;
+  }
   const tail = state.readLastAssistant(run.sessionFile);
   const text = tail.pendingToolCall ? null : tail.text;
   if (text !== null) {
     if (text !== run.lastDeliveredText) {
       run.lastDeliveredText = text;
-      await finish(state, run, doneResult(state, run, text));
+      await finish(state, run, doneResult(run, text, state.maxResultChars));
     }
   } else if (run.lastDeliveredText === null) {
     const reason = state.readExitReceipt(run.sessionFile) ? "quitted" : "pane_exited";
     await finish(state, run, unknownResult(run, reason));
   }
   state.settle(run);
-}
-
-function doneResult(state: RunState, run: RunRecord, text: string): DoneResult {
-  return {
-    state: "done",
-    name: run.name,
-    text: resultText(text, state.maxResultChars, run.sessionFile),
-    sessionFile: run.sessionFile,
-    paneId: run.paneId,
-  };
-}
-
-function unknownResult(run: RunRecord, reason: UnknownReason): UnknownResult {
-  return {
-    state: "unknown",
-    name: run.name,
-    reason,
-    sessionFile: run.sessionFile,
-    paneId: run.paneId,
-  };
 }
 
 async function finish(state: RunState, run: RunRecord, result: RunResult): Promise<void> {
@@ -130,9 +134,7 @@ async function finish(state: RunState, run: RunRecord, result: RunResult): Promi
     state.settle(run);
     return;
   }
-  if (result.state === "done") {
-    schedulePoll(state, run);
-    return;
+  if (result.state !== "done") {
+    state.settle(run);
   }
-  state.settle(run);
 }

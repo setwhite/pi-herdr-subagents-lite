@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInbox, enqueue } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
-import { schedulePoll } from "./poll.ts";
+import { findAgent } from "./find.ts";
+import { ensurePoll } from "./poll.ts";
 import { resolveProfile } from "./resolve.ts";
 import { agentArgs, profileCwd } from "./spawn-args.ts";
 import { createPane } from "./start.ts";
@@ -33,13 +34,13 @@ export async function send(state: RunState, name: string, message: string): Prom
     throw new ToolError("unknown_agent", `unknown agent "${name}"; available: ${list}`);
   }
 
-  const snapshot = await state.host.getAgent(name);
-  if (snapshot) {
+  const agent = findAgent(await state.host.listAgents(), run);
+  if (agent) {
     if (!run.live) {
-      run.lastHandledSeq = snapshot.completionSeq;
+      run.lastHandledSeq = agent.completionSeq;
       run.live = true;
       run.pollFailures = 0;
-      schedulePoll(state, run);
+      ensurePoll(state);
     }
     await enqueue(run.sessionFile, inboxMessage(message));
     return { state: "sent", name };
@@ -80,7 +81,7 @@ export async function send(state: RunState, name: string, message: string): Prom
       sessionFile: run.sessionFile,
       agentArgs: agentArgs(profile, identityFile),
     });
-    const baseline = await state.host.getAgent(run.name);
+    const baseline = findAgent(await state.host.listAgents(), run);
     if (!baseline) {
       throw new Error(`agent "${run.name}" did not register after resume`);
     }
@@ -92,7 +93,7 @@ export async function send(state: RunState, name: string, message: string): Prom
 
   run.live = true;
   run.pollFailures = 0;
-  schedulePoll(state, run);
+  ensurePoll(state);
   await enqueue(run.sessionFile, inboxMessage(message));
   return { state: "restarted", name: run.name, paneId: run.paneId };
 }

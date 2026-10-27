@@ -31,6 +31,8 @@ export interface RunState extends RunServiceDeps {
   sessionsDir: string;
   runs: RunRecord[];
   resultHandler: ResultHandler | undefined;
+  pollTimer?: ReturnType<typeof setTimeout>;
+  pollBusy: boolean;
   nextName(profile: string): string;
   active(): string[];
   available(): string[];

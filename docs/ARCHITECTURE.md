@@ -21,8 +21,8 @@
 | `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
 | `extension` | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` | 同，瘦身 |
 | `tool` | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
-| `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）；`aggregate.ts`（T30） | 原 `subagent`（T19） |
-| `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
+| `run` | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）、`find.ts`（T26）；`aggregate.ts`（T30） | 原 `subagent`（T19） |
+| `herdr` | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
 | `session-file` | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
 | `inbox` | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
 | `config` | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
@@ -82,7 +82,7 @@ run 生命周期内核。run 先解析 profile（缺 → `unknown_profile`，坏
 
 ### herdr
 
-`HerdrHost` 端口与唯一真实适配器。CLI 调用全部走 `execFile` 的 argv，不经 shell；解析 JSON；`agent_name_taken` 归一成 `name_taken`，`agent_not_found` 在查询里转为 null，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时。`resumeAgent` 只做 `agent start`。
+`HerdrHost` 端口与唯一真实适配器。CLI 调用全部走 `execFile` 的 argv，不经 shell；解析 JSON；`agent_name_taken` 归一成 `name_taken`，其余原样抛出。`startAgent` 先 `agent start` 到 idle，再 `agent prompt @brief`；brief 不放进启动 argv，否则带首轮任务的长任务会让启动等待超时。`resumeAgent` 只做 `agent start`。`listAgents` 一次 `agent list` 覆盖所有 agent；字段依据见 `docs/research/herdr-agent-list.md`。
 
 ### session-file
 

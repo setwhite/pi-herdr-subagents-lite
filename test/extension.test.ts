@@ -12,6 +12,7 @@ import {
   type SubagentTool,
 } from "../src/extension/index.ts";
 import {
+  type AgentEntry,
   type AgentSnapshot,
   type HerdrHost,
   HerdrHostError,
@@ -53,6 +54,7 @@ function fakePi(events: string[] = []) {
   let currentSession: SessionContext | undefined;
   let shutdowns = 0;
   let sendUserMessageImpl: (content: string) => void = () => {};
+  let sendFailures = 0;
   const pi: ExtensionRegistrar = {
     on(
       event: "session_start" | "session_shutdown" | "agent_settled" | "ui_prompt_start" | "ui_prompt_end",
@@ -86,6 +88,10 @@ function fakePi(events: string[] = []) {
       tools.push(tool);
     },
     sendMessage(message, options) {
+      if (sendFailures > 0) {
+        sendFailures -= 1;
+        throw new Error("send failed");
+      }
       events.push("sendMessage");
       sent.push({ message, options });
     },
@@ -145,6 +151,9 @@ function fakePi(events: string[] = []) {
     promptEnd: () => prompt("end"),
     promptStart: () => prompt("start"),
     sent,
+    setSendFailures(count: number) {
+      sendFailures = count;
+    },
     setSendUserMessage(impl: (content: string) => void) {
       sendUserMessageImpl = impl;
     },
@@ -175,7 +184,9 @@ function fakeHost(
   let paneExists = true;
   let panes = 0;
   let starts = 0;
-  let getAgentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
+  const paneAgents = new Map<string, string>();
+  let agentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
+  let listAgentsImpl: (() => Promise<AgentEntry[]>) | undefined;
   const host: HerdrHost = {
     async createTab(input) {
       calls.push("createTab");
@@ -198,6 +209,7 @@ function fakeHost(
     async startAgent(input) {
       calls.push("startAgent");
       agents.push(input);
+      paneAgents.set(input.paneId, input.name);
       inboxAtStart.push(existsSync(`${input.sessionFile}.inbox`));
       starts += 1;
       const error = options.failures?.startAgent?.(starts);
@@ -208,16 +220,28 @@ function fakeHost(
     async resumeAgent(input) {
       calls.push("resumeAgent");
       resumed.push(input);
+      paneAgents.set(input.paneId, input.name);
       resumeInboxAtStart.push(pendingInbox(input.sessionFile));
     },
     async hasPane() {
       calls.push("hasPane");
       return paneExists;
     },
-    async getAgent(name) {
-      calls.push("getAgent");
-      return getAgentImpl(name);
+    async listAgents() {
+      calls.push("listAgents");
+      if (listAgentsImpl) {
+        return listAgentsImpl();
+      }
+      const entries: AgentEntry[] = [];
+      for (const [paneId, name] of paneAgents) {
+        const snapshot = await agentImpl(name);
+        if (snapshot) {
+          entries.push({ name, paneId, status: snapshot.status, completionSeq: snapshot.completionSeq });
+        }
+      }
+      return entries;
     },
+
     async closeTabIfOnlyPane() {
       calls.push("closeTabIfOnlyPane");
       const outcome = options.closeTab?.() ?? "closed";
@@ -236,8 +260,11 @@ function fakeHost(
     renamedTabs,
     resumeInboxAtStart,
     resumed,
-    setGetAgent(impl: (name: string) => Promise<AgentSnapshot | null>) {
-      getAgentImpl = impl;
+    setAgents(impl: (name: string) => Promise<AgentSnapshot | null>) {
+      agentImpl = impl;
+    },
+    setListAgents(impl: () => Promise<AgentEntry[]>) {
+      listAgentsImpl = impl;
     },
     setPaneExists(value: boolean) {
       paneExists = value;
@@ -286,14 +313,15 @@ function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
 }
 
 function loadSession(host: HerdrHost, events: string[] = [], ctx?: Partial<SessionContext>) {
-  const { pi, sent, shutdownSession, startSession, tools } = fakePi(events);
+  const fake = fakePi(events);
+  const { pi, sent, shutdownSession, startSession, tools } = fake;
   registerExtension(pi, host);
   startSession(ctx);
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
     throw new Error(`expected one registered tool, got ${tools.length}`);
   }
-  return { sent, shutdownSession, startSession, tool };
+  return { sent, setSendFailures: fake.setSendFailures, shutdownSession, startSession, tool };
 }
 
 function loadTool(host: HerdrHost, ctx?: Partial<SessionContext>) {
@@ -308,7 +336,7 @@ function loadTimedSession(
   process.env.HERDR_ENV = "1";
   const calls: string[] = [];
   const fake = fakeHost({ events: calls, closeTab });
-  fake.setGetAgent(getAgent);
+  fake.setAgents(getAgent);
   return { ...loadSession(fake.host, calls), calls };
 }
 
@@ -391,7 +419,7 @@ async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot
   let beforeResume: AgentSnapshot | null = { status: "idle", completionSeq: 1 };
   let afterResume: AgentSnapshot | null = options.baseline ?? { status: "working", completionSeq: 1 };
   let name = "";
-  fake.setGetAgent(async (agentName) => {
+  fake.setAgents(async (agentName) => {
     if (agentName !== name) {
       return null;
     }
@@ -756,7 +784,7 @@ it("queues a message for a live child", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\ndescription: Explore\n---\n\nExplore body.\n");
   const fake = fakeHost();
-  fake.setGetAgent(async () => ({ status: "working", completionSeq: 0 }));
+  fake.setAgents(async () => ({ status: "working", completionSeq: 0 }));
   const { tool } = loadSession(fake.host);
   const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
 
@@ -907,6 +935,24 @@ it("keeps finished runs for send", async () => {
   expect(parseStarted(next).name).toBe("explore-2");
 });
 
+it("sends to a renamed agent by pane id", async () => {
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  const fake = fakeHost();
+  const { sent, tool } = loadSession(fake.host);
+  const started = parseStarted(await runTask(tool, "inspect the repo"));
+  fake.setListAgents(async () => [
+    { name: "renamed-worker", paneId: started.paneId, status: "idle", completionSeq: 1 },
+  ]);
+
+  const reply = await sendTask(tool, "worker-1", "next turn");
+
+  expect(reply.isError).toBe(false);
+  expect(firstText(reply)).toBe('{"state":"sent","name":"worker-1"}');
+  expect(fake.resumed).toHaveLength(0);
+  expect(sent).toHaveLength(0);
+});
+
 it("re-reads auto-exit when restarting", async () => {
   writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
   const { fake, sent, setAfterResume, started, tool } = await exitedChild({ profile: "explore" });
@@ -930,7 +976,7 @@ it("re-arms a finished child that is still alive", async () => {
   process.env.HERDR_ENV = "1";
   writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
   const fake = fakeHost({ closeTab: () => "kept" });
-  fake.setGetAgent(async () => ({ status: "idle", completionSeq: 1 }));
+  fake.setAgents(async () => ({ status: "idle", completionSeq: 1 }));
   const { tool } = loadSession(fake.host);
   const started = parseStarted(await runTask(tool, "inspect the repo", "explore"));
   writeFileSync(started.sessionFile, `${assistantLine("old result")}\n`);
@@ -1364,7 +1410,7 @@ it("ignores completion seq zero", async () => {
 
   await vi.advanceTimersByTimeAsync(1000);
 
-  expect(calls.filter((call) => call === "getAgent")).toHaveLength(1);
+  expect(calls.filter((call) => call === "listAgents")).toHaveLength(1);
   expect(sent).toHaveLength(0);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
@@ -1373,6 +1419,44 @@ it("ignores completion seq zero", async () => {
 
   expect(sent).toHaveLength(1);
   expect(sent[0]?.message.content.startsWith("[subagent worker-1] done")).toBe(true);
+});
+
+it("polls all runs with one agent list call", async () => {
+  writeConfig({ maxConcurrent: 3 });
+  const { calls, tool } = loadTimedSession(async () => ({ status: "working", completionSeq: 0 }));
+
+  for (let index = 1; index <= 3; index++) {
+    await runTask(tool, `task ${index}`);
+  }
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(calls.filter((call) => call === "listAgents")).toHaveLength(1);
+});
+
+it("matches a renamed agent by pane id", async () => {
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  const fake = fakeHost();
+  const { sent, tool } = loadSession(fake.host);
+  const started = parseStarted(await runTask(tool, "inspect the repo"));
+  let seq = 1;
+  fake.setListAgents(async () => [
+    { name: `renamed-worker-${seq}`, paneId: started.paneId, status: "idle", completionSeq: seq },
+  ]);
+
+  writeFileSync(started.sessionFile, `${assistantLine("first answer")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("first answer");
+
+  seq = 2;
+  writeFileSync(started.sessionFile, `${assistantLine("second answer")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+  expect(sent[1]?.message.content).toContain("second answer");
 });
 
 it("does not overlap polls", async () => {
@@ -1396,6 +1480,27 @@ it("does not overlap polls", async () => {
   resolvePoll({ status: "working", completionSeq: 0 });
   await vi.advanceTimersByTimeAsync(1000);
   expect(polls).toBe(2);
+});
+
+it("keeps polling other runs when delivery fails", async () => {
+  writeConfig({ maxConcurrent: 2 });
+  vi.useFakeTimers();
+  process.env.HERDR_ENV = "1";
+  const fake = fakeHost();
+  const { sent, setSendFailures, tool } = loadSession(fake.host);
+  fake.setAgents(async () => ({ status: "idle", completionSeq: 1 }));
+  const first = parseStarted(await runTask(tool, "first task"));
+  const second = parseStarted(await runTask(tool, "second task"));
+  writeFileSync(first.sessionFile, `${assistantLine("first answer")}\n`);
+  writeFileSync(second.sessionFile, `${assistantLine("second answer")}\n`);
+  setSendFailures(1);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("second answer");
 });
 
 it("releases the slot after done", async () => {
