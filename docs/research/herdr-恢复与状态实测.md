@@ -1,6 +1,6 @@
 # herdr 恢复与状态实测
 
-研究记录；当前契约见 [v1 契约](../specs/0001-v1-contract.md)，决策见 [决策](../decisions/README.md)，M0 快照见 [archive/m0](../archive/m0/README.md)。
+研究记录；当前契约见 [v1 契约](../specs/0001-v1-contract.md)，决策见 [决策](../decisions/README.md)。
 
 日期 2026-10-23。环境：herdr 0.9.5（Windows，protocol 22），pi 1.4.0。测试在隔离的 named session 里跑（`herdr --session u16test server` / `u16b`），未触碰 default session；测试后 `herdr session delete`。
 
@@ -77,4 +77,4 @@ herdr --session u16test agent explain tester --json
 
 ## 未决
 
-未决项见 [决策](../decisions/README.md) 的「边界与验证」与 [M0 spec](../archive/m0/spec.md)。
+未决项见 [决策](../decisions/README.md) 的「边界与验证」。

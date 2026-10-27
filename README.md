@@ -1,7 +1,7 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码只支持 `run` 与 profile（全局，受信项目可覆盖），名字按 profile 生成，结果异步；v1 的 send、bridge、恢复与 npm 发布是目标，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码支持 `run`、`send`、全局与项目 profile；其余 v1 行为见 [任务台账](docs/todos/README.md)，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
 
@@ -49,7 +49,6 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 - [决策](docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
 - [GLOSSARY](docs/GLOSSARY.md) — 术语。
 - [herdr E2E](docs/e2e/herdr.md) — 当前的手工回归 runbook。
-- [M0 归档](docs/archive/m0/README.md) — spec、任务/审计、E2E 记录。
 - [任务台账](docs/todos/README.md) — v1 里程碑。
 - [参考实现](docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
 - [herdr 恢复与状态实测](docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
