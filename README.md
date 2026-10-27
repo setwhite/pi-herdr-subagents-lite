@@ -21,7 +21,7 @@ pi -e ./src/index.ts
 
 ## 用法
 
-在 herdr pane 里启动 pi 后，先写一个 profile（`<agent-dir>/agents/<name>.md`，YAML frontmatter + body；受信项目可用 `.pi/agents/<name>.md` 覆盖），再调 `subagent` 的 `run`：
+在 herdr pane 里启动 pi 后，先写一个 profile（`<agent-dir>/pi-herdr-subagents-lite/profiles/<name>.md`，YAML frontmatter + body；受信项目可用 `.pi/pi-herdr-subagents-lite/profiles/<name>.md` 覆盖），再调 `subagent` 的 `run`：
 
 ~~~json
 {"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}

@@ -48,7 +48,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 
 ## 2. Profile
 
-路径：全局 `~/.pi/agent/agents/*.md`，项目 `.pi/agents/*.md`；同名项目覆盖全局。项目 profile 只在项目受信任后读取。
+路径：全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 `.pi/pi-herdr-subagents-lite/profiles/*.md`；同名项目覆盖全局。项目 profile 只在项目受信任后读取。
 
 格式：YAML frontmatter + Markdown body。profile 名 = 文件名（去 `.md`）；frontmatter `name` 可选，只显示在 profile 列表。
 

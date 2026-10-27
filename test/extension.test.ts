@@ -206,7 +206,7 @@ function writeConfig(value: unknown) {
 }
 
 function writeProfile(fileName: string, content: string) {
-  const file = join(agentDir, "agents", fileName);
+  const file = join(agentDir, "pi-herdr-subagents-lite", "profiles", fileName);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, content);
 }
@@ -216,7 +216,7 @@ function sessionsRoot(): string {
 }
 
 function writeProjectProfile(fileName: string, content: string) {
-  const file = join(projectDir, ".pi", "agents", fileName);
+  const file = join(projectDir, ".pi", "pi-herdr-subagents-lite", "profiles", fileName);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, content);
 }
@@ -757,7 +757,7 @@ it("re-reads the profile on restart", async () => {
   expect(fake.resumed[0]?.agentArgs).toEqual(expect.arrayContaining(["--model", "new/model"]));
   expect(await readFile(`${started.sessionFile}.identity.md`, "utf8")).toBe("New body.");
 
-  rmSync(join(agentDir, "agents", "explore.md"), { force: true });
+  rmSync(join(agentDir, "pi-herdr-subagents-lite", "profiles", "explore.md"), { force: true });
   setAfterResume(null);
 
   const missing = await sendTask(tool, "explore-1", "again");

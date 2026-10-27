@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { dataDir } from "../config/index.ts";
 
 export type Thinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type SystemPromptMode = "append" | "replace" | "task";
@@ -180,7 +181,7 @@ export function skillPath(name: string): string {
   return join(agentDir(), "skills", name);
 }
 
-function readAgentsDir(dir: string): ProfileCatalog {
+function readProfilesDir(dir: string): ProfileCatalog {
   let entries: string[];
   try {
     entries = readdirSync(dir).filter((entry) => entry.endsWith(".md"));
@@ -213,12 +214,12 @@ function readAgentsDir(dir: string): ProfileCatalog {
 }
 
 export function loadProfiles({ cwd, trusted }: ProfileSources): ProfileCatalog {
-  const global = readAgentsDir(join(getAgentDir(), "agents"));
+  const global = readProfilesDir(join(dataDir(getAgentDir()), "profiles"));
   if (!trusted) {
     return global;
   }
 
-  const project = readAgentsDir(join(cwd, ".pi", "agents"));
+  const project = readProfilesDir(join(dataDir(join(cwd, ".pi")), "profiles"));
   const projectNames = new Set([
     ...project.profiles.map((profile) => profile.name),
     ...project.problems.map((problem) => problem.name),

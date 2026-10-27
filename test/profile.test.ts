@@ -7,8 +7,8 @@ import { loadProfiles, type Profile } from "../src/profile/index.ts";
 let agentDir = "";
 let projectDir = "";
 
-function agentsDir(): string {
-  return join(agentDir, "agents");
+function profilesDir(): string {
+  return join(agentDir, "pi-herdr-subagents-lite", "profiles");
 }
 
 function catalog(options: { trusted?: boolean } = {}) {
@@ -16,14 +16,14 @@ function catalog(options: { trusted?: boolean } = {}) {
 }
 
 function writeProjectProfile(fileName: string, content: string) {
-  const file = join(projectDir, ".pi", "agents", fileName);
+  const file = join(projectDir, ".pi", "pi-herdr-subagents-lite", "profiles", fileName);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, content);
 }
 
 function writeProfile(fileName: string, content: string): string {
-  const file = join(agentsDir(), fileName);
-  mkdirSync(agentsDir(), { recursive: true });
+  const file = join(profilesDir(), fileName);
+  mkdirSync(profilesDir(), { recursive: true });
   writeFileSync(file, content);
   return file;
 }
@@ -127,7 +127,7 @@ it("rejects malformed tool lists", () => {
         name: "explore",
         file,
         field: "tools",
-        reason: "expected comma-separated names, or +name/-name entries, not both",
+        reason: "expected names, or +name/-name entries, not both",
       },
     ]);
   }

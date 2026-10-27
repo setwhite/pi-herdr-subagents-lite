@@ -12,7 +12,7 @@ const EDGES = {
   config: ["config"],
   extension: ["config", "extension", "profile", "subagent", "herdr", "session", "inbox"],
   subagent: ["config", "subagent", "profile", "herdr", "session", "inbox"],
-  profile: ["profile"],
+  profile: ["config", "profile"],
   herdr: ["herdr"],
   session: ["session"],
   inbox: ["inbox"],
@@ -43,7 +43,7 @@ const SINGLE_IMPORT = [
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/subagent/index.ts"],
+    only: ["src/extension/index.ts", "src/profile/index.ts", "src/subagent/index.ts"],
     typeOnlyIn: ["src/extension/index.ts"],
   },
 ];

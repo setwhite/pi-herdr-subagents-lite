@@ -1,7 +1,7 @@
 
 # herdr 手工 E2E
 
-当前回归 runbook：一个 `subagent` 工具，`run` / `send`；子进程加载本包轮询 inbox；profile 来自 `<agent-dir>/agents/*.md`、名字 `<profile>-<n>`、并发上限来自 config。真实 herdr CLI 不进自动化测试，这里是唯一的手工链路。
+当前回归 runbook：一个 `subagent` 工具，`run` / `send`；子进程加载本包轮询 inbox；profile 来自 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`、名字 `<profile>-<n>`、并发上限来自 config。真实 herdr CLI 不进自动化测试，这里是唯一的手工链路。
 
 环境：Windows + git-bash、herdr 0.9.5、pi 1.4.0。使用隔离的 `PI_CODING_AGENT_DIR`，只复制真实 `auth.json`，不碰全局配置。
 
@@ -23,8 +23,8 @@ JSON
 cat > "$AGENT_DIR/keybindings.json" <<'JSON'
 {"app.session.new":"f12"}
 JSON
-mkdir -p "$AGENT_DIR/agents" "$AGENT_DIR/pi-herdr-subagents-lite"
-cat > "$AGENT_DIR/agents/explore.md" <<'MD'
+mkdir -p "$AGENT_DIR/pi-herdr-subagents-lite/profiles"
+cat > "$AGENT_DIR/pi-herdr-subagents-lite/profiles/explore.md" <<'MD'
 ---
 description: Explore the repo
 ---

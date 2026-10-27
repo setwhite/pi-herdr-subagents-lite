@@ -17,7 +17,7 @@ v1 目标与当前代码的差异见 [v1 契约](specs/0001-v1-contract.md) 与 
 | session | 读 child session 最后一条 assistant 的文本与 toolCall 状态 | Node fs |
 | inbox | `<childSession>.inbox/` 的建目录、入队、按序投递、归档与删除 | Node fs / path / crypto |
 | config | 读全局 `config.json`：默认值、clamp、严格校验 | Node fs / path / os |
-| profile | 读 `<agent-dir>/agents/*.md`：拆 frontmatter 与 body，校验字段；解析 skills 路径 | pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
+| profile | 读 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`：拆 frontmatter 与 body，校验字段；解析 skills 路径 | config 的 `dataDir`、pi 的 `parseFrontmatter` / `getAgentDir`、Node fs / path |
 
 入口不是模块：只构造真实 host/session、把 `agentDir()` 绑定进 `loadConfig`、注入 `loadProfiles`、导出扩展。
 
@@ -63,7 +63,7 @@ index 注入 `loadConfig` 与 `loadProfiles`；config 在工厂里调用一次�
 
 ### profile
 
-`loadProfiles({ cwd, trusted })` 读全局 `<agent-dir>/agents/*.md`；`trusted` 为 true 时再读 `<cwd>/.pi/agents/*.md`，同名文件由项目版本覆盖（全局的问题也一并让位）。profile 名 = 文件名（去 `.md`），YAML frontmatter 与 body 分开；字段按 [v1 契约](specs/0001-v1-contract.md) 第 2 节校验，未知字段忽略。坏字段只跳过该 profile，返回 `{ profiles, problems }`，模块自己不抛错；目录不存在时视为空。extension 在 `session_start` 用 ctx 的 `cwd` 与 `isProjectTrusted()` 取目录；subagent 每次 run 通过注入的 loader 取一次，把 problems 映射成 `profile_invalid`，把缺名字映射成 `unknown_profile`。
+`loadProfiles({ cwd, trusted })` 读全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`；`trusted` 为 true 时再读 `<cwd>/.pi/pi-herdr-subagents-lite/profiles/*.md`，同名文件由项目版本覆盖（全局的问题也一并让位）。profile 名 = 文件名（去 `.md`），YAML frontmatter 与 body 分开；字段按 [v1 契约](specs/0001-v1-contract.md) 第 2 节校验，未知字段忽略。坏字段只跳过该 profile，返回 `{ profiles, problems }`，模块自己不抛错；目录不存在时视为空。extension 在 `session_start` 用 ctx 的 `cwd` 与 `isProjectTrusted()` 取目录；subagent 每次 run 通过注入的 loader 取一次，把 problems 映射成 `profile_invalid`，把缺名字映射成 `unknown_profile`。
 
 profile 是唯一对 pi 做运行时 import 的叶子：`parseFrontmatter` 拆 frontmatter，`getAgentDir` 定位 agent 目录（`PI_CODING_AGENT_DIR` 或 `~/.pi/agent`）。
 
@@ -93,9 +93,10 @@ subagent -> profile
 subagent -> session
 subagent -> config
 subagent -> inbox
+profile -> config
 ~~~
 
-- 只能沿箭头依赖，禁止反向 import；config、herdr、session、profile、inbox 是叶子。
+- 只能沿箭头依赖，禁止反向 import；config、herdr、session、inbox 是叶子，profile 只额外依赖 config。
 - config 只认 Node fs/path/os，不 import pi，也不 import 其他模块；配置错误的唯一表达是一条带字段名的 Error。
 - inbox 只认 Node fs/path/crypto，不 import 其他模块；不解析消息内容，也不记投递失败次数。
 - subagent 不 import pi；extension 不 import 真实 CLI 或 fs；只有 index 同时认识真实适配器与 pi。
@@ -113,7 +114,7 @@ subagent -> inbox
 - 唯一 mock seam 是 pi 扩展 API + 注入 HerdrHost：fake pi、fake host、fake timers、临时 session JSONL。测试不 mock SubagentService 内部，也不 mock Node fs；真实 CLI 字段由手工 E2E 校准，不写第二个 mock。
 - 仓库级守卫是 `scripts/check-imports.mjs`（零依赖 node 脚本）；提交前闸是 `.githooks/pre-commit`（`git config core.hooksPath .githooks` 启用一次），与 CI 跑同一批命令。
 - 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
-- 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只从全局复制真实 `auth.json`，另写最小 `settings.json`、`keybindings.json`、`config.json` 与 `agents/explore.md`；步骤见 [e2e/herdr.md](e2e/herdr.md)。
+- 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只从全局复制真实 `auth.json`，另写最小 `settings.json`、`keybindings.json`、`config.json` 与 `pi-herdr-subagents-lite/profiles/explore.md`；步骤见 [e2e/herdr.md](e2e/herdr.md)。
 
 ### seam
 
