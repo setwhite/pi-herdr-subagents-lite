@@ -479,7 +479,7 @@ it("rejects outside herdr", async () => {
   expect(result.content).toEqual([
     {
       type: "text",
-      text: "not_in_herdr: subagent requires running pi inside a herdr pane; there is no fallback.",
+      text: "not_in_herdr: run pi inside a herdr pane; there is no fallback.",
     },
   ]);
   expect(calls).toEqual([]);

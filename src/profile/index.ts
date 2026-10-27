@@ -113,7 +113,7 @@ function toolsField(fields: Fields): string | undefined {
   const signed = entries.filter((entry) => entry.startsWith("+") || entry.startsWith("-"));
   const broken = entries.some((entry) => entry === "" || entry === "+" || entry === "-");
   if (broken || (signed.length > 0 && signed.length < entries.length)) {
-    complain(fields, "tools", "expected comma-separated names, or +name/-name entries, not both");
+    complain(fields, "tools", "expected names, or +name/-name entries, not both");
     return undefined;
   }
   return value;
@@ -134,7 +134,7 @@ function skillsField(fields: Fields): string[] | undefined {
   }
   const named = names as string[];
   if (named.some((name) => name === "" || name.startsWith("+") || name.startsWith("-"))) {
-    complain(fields, "skills", "expected skill names, without + / - prefixes");
+    complain(fields, "skills", "expected names without +/- prefixes");
     return undefined;
   }
   return named;

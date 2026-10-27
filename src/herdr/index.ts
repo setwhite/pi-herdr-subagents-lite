@@ -145,13 +145,13 @@ async function execHerdrJson<T>(args: string[]): Promise<T> {
   try {
     parsed = JSON.parse(stdout) as { result?: T; error?: HerdrErrorBody };
   } catch {
-    throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")} returned invalid JSON`);
+    throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")}: invalid JSON`);
   }
   if (parsed.error?.code) {
     throw hostError(parsed.error.code, parsed.error.message ?? parsed.error.code);
   }
   if (parsed.result === undefined) {
-    throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")} returned no result`);
+    throw new HerdrHostError("herdr_protocol", `herdr ${args.join(" ")}: no result`);
   }
   return parsed.result;
 }

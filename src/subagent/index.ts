@@ -17,9 +17,9 @@ const READ_ATTEMPTS = 3;
 const READ_RETRY_DELAY_MS = 200;
 
 const WORKER_INSTRUCTIONS = `You are a worker subagent. Complete the task below in the current working directory.
-Do not spawn subagents. If you need a decision and ask_user_question is available,
-use it; the human answers in your pane. Otherwise, state the decision needed in your
-final answer. Finish with a concise summary: what you did, where, and any open questions.`;
+Do not spawn subagents. When you need a decision, use ask_user_question if it is available;
+the human answers in your pane. Otherwise state the decision in your final answer.
+End with a short summary: what you did, where, and what is open.`;
 
 export interface RunStarted {
   state: "running";
@@ -202,7 +202,7 @@ function spawnFailed(error: unknown, paneId: string | undefined, created = true)
   const createdNote = created && paneId ? `; pane ${paneId} was created` : "";
   const trust =
     error instanceof HerdrHostError && error.code === "agent_not_ready"
-      ? " and is likely waiting at a trust dialog; answer it in that pane, then run again"
+      ? "; the pane is likely waiting at a trust dialog; answer it, then run again"
       : "";
   return new ToolError("spawn_failed", `${detail}${createdNote}${trust}`);
 }
@@ -368,7 +368,7 @@ export function createSubagentService({
       const profile = resolveProfile(loadProfiles(), profileName);
       if (active().length >= maxConcurrent) {
         const names = active().join(", ");
-        throw new ToolError("max_concurrent", `already running ${names}; wait for a result or close one`);
+        throw new ToolError("max_concurrent", `at max concurrency; running: ${names}`);
       }
 
       const runId = randomUUID();
@@ -429,7 +429,7 @@ export function createSubagentService({
             if (retry >= NAME_ATTEMPTS) {
               throw new ToolError(
                 "name_exhausted",
-                `no free name for "${profileSlug(profileName)}" after ${NAME_ATTEMPTS} attempts`,
+                `no free name for "${profileSlug(profileName)}" after ${NAME_ATTEMPTS} tries`,
               );
             }
             run.name = nextName(profileName);
@@ -477,15 +477,12 @@ export function createSubagentService({
       }
 
       if (!existsSync(run.sessionFile)) {
-        throw new ToolError(
-          "session_missing",
-          `child session "${run.sessionFile}" for "${name}" is missing; start a new run`,
-        );
+        throw new ToolError("session_missing", `child session "${run.sessionFile}" is missing; start a new run`);
       }
       if (readLastAssistant(run.sessionFile).pendingToolCall) {
         throw new ToolError(
           "tail_dirty",
-          `child session "${run.sessionFile}" ends with an unfinished tool call; not restarting "${name}"`,
+          `child session "${run.sessionFile}" ends with an unfinished tool call; "${name}" not restarted`,
         );
       }
 

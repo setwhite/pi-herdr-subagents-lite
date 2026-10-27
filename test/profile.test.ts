@@ -138,7 +138,7 @@ it("rejects skills that are not names", () => {
     const file = writeProfile("explore.md", `---\nskills: ${value}\n---\n\nbody\n`);
 
     expect(catalog().problems).toEqual([
-      { name: "explore", file, field: "skills", reason: "expected skill names, without + / - prefixes" },
+      { name: "explore", file, field: "skills", reason: "expected names without +/- prefixes" },
     ]);
   }
 });
