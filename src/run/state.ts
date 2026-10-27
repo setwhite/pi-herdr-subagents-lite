@@ -18,6 +18,7 @@ export interface RunRecord {
   paneLabel: string;
   sessionFile: string;
   tabId: string;
+  autoExit: boolean;
   lastHandledSeq: number;
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;

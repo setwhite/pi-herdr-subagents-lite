@@ -1,4 +1,5 @@
 import type { AgentSnapshot } from "../herdr/index.ts";
+import { closeTab, shouldClose } from "./close.ts";
 import type { RunResult, UnknownReason, UnknownResult } from "./result.ts";
 import { resultText } from "./result.ts";
 import type { RunRecord, RunState } from "./state.ts";
@@ -96,14 +97,22 @@ function unknownResult(run: RunRecord, reason: UnknownReason): UnknownResult {
 async function finish(state: RunState, run: RunRecord, result: RunResult): Promise<void> {
   try {
     await state.resultHandler?.(result);
-    if (result.state === "done") {
-      try {
-        await state.host.closeTabIfOnlyPane({ tabId: run.tabId, paneId: run.paneId });
-      } catch {
-        // The result is delivered; a failed close leaves the tab for a human.
-      }
-    }
-  } finally {
+  } catch (error) {
     state.settle(run);
+    throw error;
   }
+  if (shouldClose(run, result)) {
+    try {
+      await closeTab(state, run);
+    } catch {
+      await state.resultHandler?.(unknownResult(run, "close_failed"));
+    }
+    state.settle(run);
+    return;
+  }
+  if (result.state === "done") {
+    schedulePoll(state, run);
+    return;
+  }
+  state.settle(run);
 }

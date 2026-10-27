@@ -90,6 +90,7 @@ export async function send(state: RunState, name: string, message: string): Prom
   }
 
   run.live = true;
+  run.autoExit = profile.autoExit;
   run.pollFailures = 0;
   schedulePoll(state, run);
   await enqueue(run.sessionFile, inboxMessage(message));

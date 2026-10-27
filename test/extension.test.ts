@@ -797,7 +797,7 @@ it("delivers only the result after the restart", async () => {
 
 it("keeps finished runs for send", async () => {
   writeConfig({ maxConcurrent: 1 });
-  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  writeProfile("explore.md", "---\nmodel: old/model\nauto-exit: true\n---\n\nExplore body.\n");
   const { fake, sent, setAfterResume, started, tool } = await exitedChild({ profile: "explore" });
 
   const restarted = await sendTask(tool, "explore-1", "continue the task");
@@ -816,6 +816,24 @@ it("keeps finished runs for send", async () => {
 
   expect(next.isError).toBe(false);
   expect(parseStarted(next).name).toBe("explore-2");
+});
+
+it("re-reads auto-exit when restarting", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, sent, setAfterResume, started, tool } = await exitedChild({ profile: "explore" });
+  writeProfile("explore.md", "---\nmodel: old/model\nauto-exit: true\n---\n\nExplore body.\n");
+
+  const result = await sendTask(tool, "explore-1", "continue the task");
+
+  expect(firstText(result)).toBe(JSON.stringify({ state: "restarted", name: "explore-1", paneId: started.paneId }));
+
+  setAfterResume({ status: "idle", completionSeq: 2 });
+  writeFileSync(started.sessionFile, `${assistantLine("new result")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+  expect(sent[1]?.message.content).toContain("new result");
+  expect(fake.calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
 });
 
 it("re-arms a finished child that is still alive", async () => {
@@ -1193,13 +1211,59 @@ it("delivers one done result", async () => {
   expect(message?.content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(message?.content).toContain("hello");
   expect(sent[0]?.options).toEqual({ triggerTurn: true });
-  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
-  expect(calls.indexOf("sendMessage")).toBeLessThan(calls.indexOf("closeTabIfOnlyPane"));
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
   await vi.advanceTimersByTimeAsync(5000);
 
   expect(sent).toHaveLength(1);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("keeps a finished run live and delivers the next turn", async () => {
+  let snapshot: AgentSnapshot = { status: "idle", completionSeq: 1 };
+  const { calls, sent, tool } = loadTimedSession(async () => snapshot);
+
+  const started = parseStarted(await runTask(tool, "say hello"));
+  writeFileSync(started.sessionFile, `${assistantLine("first")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("first");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+
+  const reply = await sendTask(tool, "worker-1", "next turn");
+
+  expect(reply.isError).toBe(false);
+  expect(firstText(reply)).toBe('{"state":"sent","name":"worker-1"}');
+
+  snapshot = { status: "idle", completionSeq: 2 };
+  writeFileSync(started.sessionFile, `${assistantLine("second")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+  expect(sent[1]?.message.content).toContain("second");
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("closes the tab when auto-exit is true", async () => {
+  writeConfig({ maxConcurrent: 1 });
+  writeProfile("worker.md", "---\nauto-exit: true\n---\n\nWorker body.\n");
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+
+  const started = parseStarted(await runTask(tool, "say hello"));
+  writeFileSync(started.sessionFile, `${assistantLine("hello")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+  expect(calls.indexOf("sendMessage")).toBeLessThan(calls.indexOf("closeTabIfOnlyPane"));
+
+  const next = await runTask(tool, "next task");
+
+  expect(next.isError).toBe(false);
+  expect(parseStarted(next).name).toBe("worker-2");
 });
 
 it("ignores completion seq zero", async () => {
@@ -1246,6 +1310,8 @@ it("does not overlap polls", async () => {
 });
 
 it("releases the slot after done", async () => {
+  writeConfig({ maxConcurrent: 4 });
+  writeProfile("worker.md", "---\nauto-exit: true\n---\n\nWorker body.\n");
   const { sent, tool } = loadTimedSession(async (name) =>
     name === "worker-1" ? { status: "idle", completionSeq: 1 } : { status: "working", completionSeq: 0 },
   );
@@ -1327,7 +1393,7 @@ it("resets poll failure count on success", async () => {
   expect(sent).toHaveLength(1);
   expect(content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(content).not.toContain("unknown");
-  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 });
 
 it("waits while the worker is blocked in a tool call", async () => {
@@ -1347,7 +1413,7 @@ it("waits while the worker is blocked in a tool call", async () => {
   expect(sent).toHaveLength(1);
   expect(content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(content).toContain("answered");
-  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 });
 
 it("reports unreadable result as unknown", async () => {
@@ -1408,7 +1474,8 @@ it("does not split surrogate pairs when truncating", async () => {
   expect(content).not.toMatch(/\p{Cs}/u);
 });
 
-async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error) {
+async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error, closeFailed = false) {
+  writeProfile("worker.md", "---\nauto-exit: true\n---\n\nWorker body.\n");
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }), closeTab);
 
   const started = parseStarted(await runTask(tool, "say hello"));
@@ -1417,10 +1484,15 @@ async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error)
   await vi.advanceTimersByTimeAsync(1000);
 
   const content = sent[0]?.message.content ?? "";
-  expect(sent).toHaveLength(1);
+  expect(sent).toHaveLength(closeFailed ? 2 : 1);
   expect(content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(content).toContain("hello");
   expect(content).not.toContain("error");
+  if (closeFailed) {
+    expect(sent[1]?.message.content).toBe(
+      `[subagent worker-1] unknown (close_failed)\n\nSession: ${started.sessionFile}`,
+    );
+  }
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
 
   const next = await runTask(tool, "next task");
@@ -1432,8 +1504,8 @@ it("keeps tab when close is refused", async () => {
   await expectDoneDespiteClose(() => "kept");
 });
 
-it("keeps tab when close throws", async () => {
-  await expectDoneDespiteClose(() => new Error("herdr tab close failed"));
+it("reports a failed close", async () => {
+  await expectDoneDespiteClose(() => new Error("herdr tab close failed"), true);
 });
 
 it("stops after session shutdown", async () => {

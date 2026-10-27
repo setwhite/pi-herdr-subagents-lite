@@ -52,6 +52,7 @@ export async function start(state: RunState, profileName: string, task: string):
     paneLabel: "",
     sessionFile: current.sessionFile,
     tabId: "",
+    autoExit: profile.autoExit,
     lastHandledSeq: 0,
     pollFailures: 0,
     live: true,
