@@ -21,7 +21,7 @@ export interface UnknownResult {
 
 export type RunResult = DoneResult | UnknownResult;
 
-export type ResultHandler = (result: RunResult) => void | Promise<void>;
+export type ResultHandler = (results: RunResult[]) => void | Promise<void>;
 
 export function resultText(text: string, limit: number, sessionFile: string): string {
   if (text.length <= limit) {

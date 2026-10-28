@@ -1,11 +1,12 @@
 import { join } from "node:path";
 import { dataDir } from "../config/index.ts";
 import { agentDir } from "../profile/index.ts";
+import { createAggregator } from "./aggregate.ts";
 import { type CloseChildrenResult, closeRuns } from "./close.ts";
 import { createNamer } from "./naming.ts";
 import { stopPoll } from "./poll.ts";
 import type { QuestionHandler } from "./question.ts";
-import type { ResultHandler } from "./result.ts";
+import type { ResultHandler, RunResult } from "./result.ts";
 import { type SendResult, send } from "./send.ts";
 import { type RunStarted, start } from "./start.ts";
 import type { RunRecord, RunServiceDeps, RunState } from "./state.ts";
@@ -18,6 +19,11 @@ export interface RunService {
   shutdown(): void;
   closeChildren(): Promise<CloseChildrenResult>;
   active(): string[];
+}
+
+function stopService(state: RunState): void {
+  stopPoll(state);
+  state.results?.stop();
 }
 
 function takeRuns(state: RunState): RunRecord[] {
@@ -35,6 +41,7 @@ export function createRunService(deps: RunServiceDeps): RunService {
     sessionsDir: join(dataDir(agentDir()), "sessions"),
     runs: [],
     resultHandler: undefined,
+    results: undefined,
     questionHandler: undefined,
     pollBusy: false,
     nextName: createNamer(),
@@ -69,6 +76,11 @@ export function createRunService(deps: RunServiceDeps): RunService {
       run.timer.unref?.();
     },
   };
+  state.results = createAggregator<RunResult>({
+    windowMs: deps.aggregateWindowMs,
+    deliver: (batch) => state.resultHandler?.(batch),
+    onError: deps.onResultError,
+  });
 
   return {
     run: (profile, task) => start(state, profile, task),
@@ -80,11 +92,11 @@ export function createRunService(deps: RunServiceDeps): RunService {
       state.questionHandler = handler;
     },
     shutdown() {
-      stopPoll(state);
+      stopService(state);
       takeRuns(state);
     },
     closeChildren() {
-      stopPoll(state);
+      stopService(state);
       return closeRuns(state, takeRuns(state));
     },
     active: () => state.active(),

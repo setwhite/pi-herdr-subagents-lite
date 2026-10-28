@@ -11,6 +11,7 @@ import {
   type SessionContext,
   type SubagentTool,
 } from "../src/extension/index.ts";
+import type { ShutdownHandler } from "../src/extension/shutdown.ts";
 import {
   type AgentEntry,
   type AgentSnapshot,
@@ -40,10 +41,6 @@ interface Notification {
 }
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
-type ShutdownHandler = (
-  event: { type: "session_shutdown"; reason: ShutdownReason },
-  ctx: SessionContext,
-) => void | Promise<void>;
 type PromptEvent = { kind: "select" | "confirm" | "input" | "editor" | "custom"; title?: string };
 
 function fakePi(events: string[] = []) {
@@ -301,8 +298,10 @@ function configFile(): string {
 }
 
 function writeConfig(value: unknown) {
+  const merged =
+    typeof value === "object" && value !== null && !Array.isArray(value) ? { aggregateWindowMs: 0, ...value } : value;
   mkdirSync(dirname(configFile()), { recursive: true });
-  writeFileSync(configFile(), JSON.stringify(value));
+  writeFileSync(configFile(), JSON.stringify(merged));
 }
 
 function writeProfile(fileName: string, content: string) {
@@ -516,6 +515,7 @@ beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "pi-herdr-project-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
   writeProfile("worker.md", "Worker body.\n");
+  writeConfig({});
   tempDirs.add(agentDir);
   tempDirs.add(projectDir);
 });
@@ -1903,6 +1903,71 @@ it("keeps children when the reason does not match", async () => {
   await shutdownSession("quit");
 
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("coalesces results in one window", async () => {
+  writeConfig({ aggregateWindowMs: 500 });
+  const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+  const first = parseStarted(await runTask(tool, "first task"));
+  const second = parseStarted(await runTask(tool, "second task"));
+  writeFileSync(first.sessionFile, `${assistantLine("first answer")}\n`);
+  writeFileSync(second.sessionFile, `${assistantLine("second answer")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(500);
+  expect(sent).toHaveLength(1);
+  const content = sent[0]?.message.content ?? "";
+  expect(content).toContain("[subagent worker-1] done");
+  expect(content).toContain("[subagent worker-2] done");
+});
+
+it("reports a deferred delivery failure", async () => {
+  writeConfig({ aggregateWindowMs: 500 });
+  const { notifications, sent, setSendFailures, tool } = loadTimedSession(async () => ({
+    status: "idle",
+    completionSeq: 1,
+  }));
+  const started = parseStarted(await runTask(tool, "first task"));
+  writeFileSync(started.sessionFile, `${assistantLine("first answer")}\n`);
+  setSendFailures(1);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(500);
+  expect(sent).toHaveLength(0);
+  expect(notifications.some((notification) => notification.message.includes("result delivery failed"))).toBe(true);
+});
+
+it("sends separately when aggregation is off", async () => {
+  writeConfig({ aggregateWindowMs: 0 });
+  const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+  const first = parseStarted(await runTask(tool, "first task"));
+  const second = parseStarted(await runTask(tool, "second task"));
+  writeFileSync(first.sessionFile, `${assistantLine("first answer")}\n`);
+  writeFileSync(second.sessionFile, `${assistantLine("second answer")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(2);
+});
+
+it("flushes at the window boundary", async () => {
+  writeConfig({ aggregateWindowMs: 300 });
+  const { sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
+  const started = parseStarted(await runTask(tool, "first task"));
+  writeFileSync(started.sessionFile, `${assistantLine("first answer")}\n`);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(299);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1);
+  expect(sent).toHaveLength(1);
 });
 
 it("keeps a tab with several panes", async () => {

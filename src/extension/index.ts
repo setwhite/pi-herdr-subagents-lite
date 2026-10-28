@@ -1,13 +1,14 @@
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { createBridge } from "../bridge/index.ts";
-import type { BlockedKind, Config, ShutdownReason } from "../config/index.ts";
+import type { BlockedKind, Config } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
 import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import { createRunService, type RunService } from "../run/index.ts";
 import type { ExitReceiptReader, ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
-import { createTool, type ResultMessage, type SubagentTool, sendQuestion, sendResult } from "../tool/index.ts";
+import { createTool, type ResultMessage, type SubagentTool, sendQuestion, sendResults } from "../tool/index.ts";
 import { watchAutoExit } from "./auto-exit.ts";
+import { type ShutdownHandler, watchShutdown } from "./shutdown.ts";
 
 export interface ExtensionDeps {
   host: HerdrHost;
@@ -29,12 +30,12 @@ export interface SessionContext {
 
 export type { SubagentTool };
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
 type SettledHandler = (event: { type: "agent_settled" }, ctx: SessionContext) => void;
-type ShutdownHandler = (
-  event: { type: "session_shutdown"; reason: ShutdownReason },
-  ctx: SessionContext,
-) => void | Promise<void>;
 type PromptHandler = (event: { kind: BlockedKind; title?: string }) => void;
 
 export interface ExtensionRegistrar {
@@ -64,6 +65,17 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       stopPump = undefined;
     };
 
+    watchShutdown(pi, {
+      config,
+      writeExitReceipt: deps.writeExitReceipt,
+      stopInbox,
+      takeService() {
+        const current = service;
+        service = undefined;
+        return current;
+      },
+    });
+
     const startInbox = (ctx: SessionContext) => {
       const sessionFile = ctx.sessionManager.getSessionFile();
       if (!sessionFile || !hasInbox(sessionFile)) {
@@ -86,13 +98,13 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
             return;
           }
           stopInbox();
-          const detail = error instanceof Error ? error.message : String(error);
+          const detail = errorText(error);
           ctx.ui.notify(`inbox: stopped after ${INBOX_FAILURE_LIMIT} delivery failures: ${detail}`, "error");
         },
       });
     };
 
-    const startService = (sources: ProfileSources) => {
+    const startService = (sources: ProfileSources, ctx: SessionContext) => {
       service?.shutdown();
       service = createRunService({
         host: deps.host,
@@ -101,8 +113,10 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         loadProfiles: () => deps.loadProfiles(sources),
         maxConcurrent: config.maxConcurrent,
         maxResultChars: config.maxResultChars,
+        aggregateWindowMs: config.aggregateWindowMs,
+        onResultError: (error) => ctx.ui.notify(`result delivery failed: ${errorText(error)}`, "error"),
       });
-      service.onResult((result) => sendResult(pi, result));
+      service.onResult((results) => sendResults(pi, results));
       service.onQuestion((question) => sendQuestion(pi, question));
     };
 
@@ -110,33 +124,12 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       stopInbox();
       autoExit.reset();
       const sources = { cwd: ctx.cwd, trusted: ctx.isProjectTrusted() };
-      startService(sources);
+      startService(sources, ctx);
       if (config.enabled) {
         const profiles = deps.loadProfiles(sources).profiles;
         pi.registerTool(createTool({ config, profiles, service: currentService }));
       }
       startInbox(ctx);
-    });
-
-    pi.on("session_shutdown", async (event, ctx) => {
-      stopInbox();
-      const closing = service;
-      service = undefined;
-      const sessionFile = ctx.sessionManager.getSessionFile();
-      if (sessionFile && hasInbox(sessionFile)) {
-        deps.writeExitReceipt(sessionFile, event.reason);
-      }
-      if (closing && config.closeChildrenOn.includes(event.reason)) {
-        const { kept, failed } = await closing.closeChildren();
-        for (const name of kept) {
-          ctx.ui.notify(`child "${name}" kept: its tab was not a single pane`, "warning");
-        }
-        for (const failure of failed) {
-          ctx.ui.notify(`child "${failure.name}" close failed: ${failure.reason}`, "error");
-        }
-      } else {
-        closing?.shutdown();
-      }
     });
 
     const currentService = (): RunService => {

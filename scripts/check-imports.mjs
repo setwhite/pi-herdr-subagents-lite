@@ -55,8 +55,8 @@ const SINGLE_IMPORT = [
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session-file)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/profile/", "src/run/", "src/tool/", "src/bridge/"],
-    typeOnlyIn: ["src/extension/index.ts", "src/tool/", "src/bridge/"],
+    only: ["src/extension/", "src/profile/", "src/run/", "src/tool/", "src/bridge/"],
+    typeOnlyIn: ["src/extension/", "src/tool/", "src/bridge/"],
   },
 ];
 

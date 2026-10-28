@@ -128,7 +128,7 @@ async function exited(state: RunState, run: RunRecord): Promise<void> {
 
 async function finish(state: RunState, run: RunRecord, result: RunResult): Promise<void> {
   try {
-    await state.resultHandler?.(result);
+    await state.results?.push(result);
   } catch (error) {
     state.settle(run);
     throw error;
@@ -137,7 +137,7 @@ async function finish(state: RunState, run: RunRecord, result: RunResult): Promi
     try {
       await closeTab(state, run);
     } catch {
-      await state.resultHandler?.(unknownResult(run, "close_failed"));
+      await state.results?.push(unknownResult(run, "close_failed"));
     }
     state.settle(run);
     return;

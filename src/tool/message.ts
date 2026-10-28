@@ -27,9 +27,7 @@ export function sendQuestion(sink: MessageSink, question: RunQuestion): void {
   sink.sendMessage({ customType: "subagent_question", content, display: true }, { triggerTurn: true });
 }
 
-export function sendResult(sink: MessageSink, result: RunResult): void {
-  sink.sendMessage(
-    { customType: "subagent_result", content: resultText(result), display: true },
-    { triggerTurn: true },
-  );
+export function sendResults(sink: MessageSink, results: RunResult[]): void {
+  const content = results.map(resultText).join("\n\n");
+  sink.sendMessage({ customType: "subagent_result", content, display: true }, { triggerTurn: true });
 }

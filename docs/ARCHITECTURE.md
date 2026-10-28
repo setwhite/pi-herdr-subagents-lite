@@ -19,8 +19,8 @@
 | 模块 | 职责 | 对外 | 文件 | 迁移 |
 |---|---|---|---|---|
 | `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
-| [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` | 同，瘦身 |
-| [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResult`、`sendQuestion`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
+| [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` `shutdown.ts`（T30） | 同，瘦身 |
+| [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResults`、`sendQuestion`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
 | [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、提问、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`QuestionHandler`、`RunQuestion`、`CloseChildrenResult`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）、`find.ts`（T26）、`question.ts`（T27）；`aggregate.ts`（T30） | 原 `subagent`（T19） |
 | [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
 | [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
