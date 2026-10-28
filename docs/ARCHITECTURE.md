@@ -81,8 +81,9 @@ profile -> config
 | `inbox` | 临时 session 路径 + 真实 fs；子侧泵经 fake pi + fake timers | 建目录、入队顺序、按序投递、归档、失败保留 |
 | bridge | fake pi events | `ui_prompt_*` → `herdr:blocked`、`blockedOn` 过滤 |
 | 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/read/close、真实 child |
+| `createPaneCommands` | fake `exec`（记 argv、回固定 JSON） | workspace / tab 的 argv 与 JSON 字段解析 |
 
-唯一 mock 是 pi 扩展 API + 注入的 `HerdrHost`：不 mock 模块内部，不 mock Node fs。真实 herdr 行为变化先补 [研究记录](research/) 再改代码；手工步骤见 [e2e/herdr.md](e2e/herdr.md)。
+mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：不 mock 模块内部，不 mock Node fs。真实 herdr 行为变化先补 [研究记录](research/) 再改代码；手工步骤见 [e2e/herdr.md](e2e/herdr.md)。
 
 ## 6. 文档职责
 

@@ -5,7 +5,9 @@ import type {
   CloseTabInput,
   CloseTabResult,
   CreatedTab,
+  CreatedWorkspace,
   CreateTabInput,
+  CreateWorkspaceInput,
   RenamePaneInput,
   RenameTabInput,
 } from "./pane.ts";
@@ -14,6 +16,7 @@ import { createPaneCommands } from "./pane.ts";
 export { HerdrHostError };
 
 export interface HerdrHost {
+  createWorkspace(input: CreateWorkspaceInput): Promise<CreatedWorkspace>;
   createTab(input: CreateTabInput): Promise<CreatedTab>;
   renameTab(input: RenameTabInput): Promise<void>;
   renamePane(input: RenamePaneInput): Promise<void>;

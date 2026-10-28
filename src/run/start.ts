@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { HerdrHostError } from "../herdr/index.ts";
 import { createInbox, removeInbox } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
 import { paneLabel, profileSlug } from "./naming.ts";
 import { ensurePoll } from "./poll.ts";
 import { resolveProfile } from "./resolve.ts";
-import { AUTO_EXIT_ENV, agentArgs, briefText, profileCwd } from "./spawn-args.ts";
+import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, profileCwd } from "./spawn-args.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -19,10 +19,18 @@ export interface RunStarted {
   sessionFile: string;
 }
 
+function samePath(left: string, right: string): boolean {
+  return relative(left, right) === "";
+}
+
 export async function createPane(state: RunState, run: RunRecord, cwd: string, label: string): Promise<void> {
+  const workspaceId = samePath(cwd, parentCwd())
+    ? undefined
+    : (await state.host.createWorkspace({ cwd, label: run.name })).workspaceId;
   const tab = await state.host.createTab({
     cwd,
     label: run.name,
+    workspaceId,
     env: { [AUTO_EXIT_ENV]: run.autoExit ? "1" : "0" },
   });
   run.tabId = tab.tabId;

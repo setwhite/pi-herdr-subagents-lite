@@ -8,8 +8,12 @@ Do not spawn subagents. When you need a decision, use ask_user_question if it is
 the human answers in your pane. Otherwise state the decision in your final answer.
 End with a short summary: what you did, where, and what is open.`;
 
+export function parentCwd(): string {
+  return process.cwd();
+}
+
 export function profileCwd(profile: Profile): string {
-  return profile.cwd === undefined ? process.cwd() : resolve(process.cwd(), profile.cwd);
+  return profile.cwd === undefined ? parentCwd() : resolve(parentCwd(), profile.cwd);
 }
 
 export function agentArgs(profile: Profile, identityFile: string): string[] {

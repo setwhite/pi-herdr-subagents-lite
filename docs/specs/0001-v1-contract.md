@@ -160,7 +160,7 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 - tab 标签 = `name`。
 - 侧边栏显示 herdr 的 agent name；**不设 `display_agent`**。
 - pane 标签 = 任务第一行；去掉 markdown 前缀、折叠空白、去控制字符、截 32 字。
-- 不设 `title` / `state_labels`；不改 workspace label。
+- 不设 `title` / `state_labels`；新 workspace 的 label 创建时设为 `name`，之后不改。
 - `send` 用同一个 `name`。
 - 人改 tab 标签不影响寻址；寻址用 agent name。agent 被 `herdr agent rename` 改名后，按 run 记录的 `paneId` 在 `agent list` 里回落匹配。
 

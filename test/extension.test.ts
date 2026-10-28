@@ -182,7 +182,8 @@ function fakeHost(
   options: { events?: string[]; failures?: FakeHostFailures; closeTab?: () => CloseTabResult | Error } = {},
 ) {
   const calls: string[] = options.events ?? [];
-  const tabs: Array<{ cwd: string; label: string; env: Record<string, string> }> = [];
+  const tabs: Array<{ cwd: string; label: string; env: Record<string, string>; workspaceId?: string }> = [];
+  const workspaces: Array<{ cwd: string; label: string }> = [];
   const renamedTabs: Array<{ tabId: string; label: string }> = [];
   const renamedPanes: Array<{ paneId: string; label: string }> = [];
   const agents: StartAgentInput[] = [];
@@ -197,6 +198,11 @@ function fakeHost(
   let listAgentsImpl: (() => Promise<AgentEntry[]>) | undefined;
   let readAgentImpl: () => Promise<string> = async () => "Do you want to continue?";
   const host: HerdrHost = {
+    async createWorkspace(input) {
+      calls.push("createWorkspace");
+      workspaces.push(input);
+      return { workspaceId: "w2" };
+    },
     async createTab(input) {
       calls.push("createTab");
       tabs.push(input);
@@ -287,6 +293,7 @@ function fakeHost(
       paneExists = value;
     },
     tabs,
+    workspaces,
   };
 }
 
@@ -691,9 +698,7 @@ it("uses the profile cwd", async () => {
 
   await startRun(nested);
 
-  expect(nested.tabs).toEqual([
-    { cwd: join(process.cwd(), "sub"), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } },
-  ]);
+  expect(nested.tabs.map((tab) => tab.cwd)).toEqual([join(process.cwd(), "sub")]);
 
   writeProfile("worker.md", "---\ndescription: no cwd\n---\n\nWorker body.\n");
   const plain = fakeHost();
@@ -701,6 +706,28 @@ it("uses the profile cwd", async () => {
   await startRun(plain);
 
   expect(plain.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } }]);
+});
+
+it("creates a workspace when the cwd differs", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ncwd: sub\n---\n\nWorker body.\n");
+  const fake = fakeHost();
+
+  await startRun(fake);
+
+  expect(fake.calls.filter((call) => call === "createWorkspace")).toHaveLength(1);
+  expect(fake.workspaces).toEqual([{ cwd: join(process.cwd(), "sub"), label: "worker-1" }]);
+  expect(fake.tabs[0]?.workspaceId).toBe("w2");
+});
+
+it("uses the current workspace for the parent cwd", async () => {
+  process.env.HERDR_ENV = "1";
+  const fake = fakeHost();
+
+  await startRun(fake);
+
+  expect(fake.calls).not.toContain("createWorkspace");
+  expect(fake.tabs[0]?.workspaceId).toBeUndefined();
 });
 
 it("passes model and thinking", async () => {
