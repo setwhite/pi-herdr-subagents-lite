@@ -55,4 +55,4 @@ export function createTool({ config, profiles, service }: ToolDeps) {
   };
 }
 
-export { type ResultMessage, sendResult } from "./message.ts";
+export { type ResultMessage, sendQuestion, sendResult } from "./message.ts";

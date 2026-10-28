@@ -1,6 +1,7 @@
 import type { HerdrHost } from "../herdr/index.ts";
 import type { ProfileCatalog } from "../profile/index.ts";
 import type { ExitReceiptReader, SessionReader } from "../session-file/index.ts";
+import type { QuestionHandler } from "./question.ts";
 import type { ResultHandler } from "./result.ts";
 
 export interface RunServiceDeps {
@@ -24,6 +25,7 @@ export interface RunRecord {
   lastDeliveredText: string | null;
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;
+  blocked: boolean;
   live: boolean;
 }
 
@@ -31,6 +33,7 @@ export interface RunState extends RunServiceDeps {
   sessionsDir: string;
   runs: RunRecord[];
   resultHandler: ResultHandler | undefined;
+  questionHandler: QuestionHandler | undefined;
   pollTimer?: ReturnType<typeof setTimeout>;
   pollBusy: boolean;
   nextName(profile: string): string;

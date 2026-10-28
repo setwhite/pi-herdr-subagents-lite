@@ -187,6 +187,7 @@ function fakeHost(
   const paneAgents = new Map<string, string>();
   let agentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
   let listAgentsImpl: (() => Promise<AgentEntry[]>) | undefined;
+  let readAgentImpl: () => Promise<string> = async () => "Do you want to continue?";
   const host: HerdrHost = {
     async createTab(input) {
       calls.push("createTab");
@@ -242,6 +243,11 @@ function fakeHost(
       return entries;
     },
 
+    async readAgent() {
+      calls.push("readAgent");
+      return readAgentImpl();
+    },
+
     async closeTabIfOnlyPane() {
       calls.push("closeTabIfOnlyPane");
       const outcome = options.closeTab?.() ?? "closed";
@@ -265,6 +271,9 @@ function fakeHost(
     },
     setListAgents(impl: () => Promise<AgentEntry[]>) {
       listAgentsImpl = impl;
+    },
+    setReadAgent(impl: () => Promise<string>) {
+      readAgentImpl = impl;
     },
     setPaneExists(value: boolean) {
       paneExists = value;
@@ -337,7 +346,7 @@ function loadTimedSession(
   const calls: string[] = [];
   const fake = fakeHost({ events: calls, closeTab });
   fake.setAgents(getAgent);
-  return { ...loadSession(fake.host, calls), calls };
+  return { ...loadSession(fake.host, calls), calls, fake };
 }
 
 function childSessionFile(): string {
@@ -1651,6 +1660,92 @@ it("waits while the worker is blocked in a tool call", async () => {
   expect(content.startsWith("[subagent worker-1] done")).toBe(true);
   expect(content).toContain("answered");
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("asks once per blocked episode", async () => {
+  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+
+  await runTask(tool, "ask the human");
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.customType).toBe("subagent_question");
+  expect(sent[0]?.message.content).toContain("[subagent worker-1] blocked (question)");
+  expect(sent[0]?.message.content).toContain("Do you want to continue?");
+  expect(calls.filter((call) => call === "readAgent")).toHaveLength(1);
+});
+
+it("asks again after leaving blocked", async () => {
+  let snapshot: AgentSnapshot = { status: "blocked", completionSeq: 0 };
+  const { sent, tool } = loadTimedSession(async () => snapshot);
+
+  await runTask(tool, "ask the human");
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+
+  snapshot = { status: "idle", completionSeq: 0 };
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+
+  snapshot = { status: "blocked", completionSeq: 0 };
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(2);
+});
+
+it("does not read the pane when idle", async () => {
+  const { calls, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 0 }));
+
+  await runTask(tool, "just work");
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(calls.filter((call) => call === "readAgent")).toHaveLength(0);
+});
+
+it("settles after three read failures", async () => {
+  const { fake, sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+  fake.setReadAgent(async () => {
+    throw new Error("pane is gone");
+  });
+
+  await runTask(tool, "ask the human");
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("unknown (poll_failed)");
+});
+
+it("does not repeat a question when delivery fails", async () => {
+  const { sent, setSendFailures, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+  setSendFailures(1);
+
+  await runTask(tool, "ask the human");
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(sent).toHaveLength(0);
+});
+
+it("asks again after a revived blocked run", async () => {
+  const { fake, sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+  const started = parseStarted(await runTask(tool, "ask the human"));
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(1);
+
+  fake.setListAgents(async () => {
+    throw new Error("herdr down");
+  });
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(sent).toHaveLength(2);
+  expect(sent[1]?.message.content).toContain("unknown (poll_failed)");
+
+  fake.setListAgents(async () => [{ name: started.name, paneId: started.paneId, status: "blocked", completionSeq: 0 }]);
+  const resumed = await sendTask(tool, started.name, "keep going");
+  expect(resumed.isError).toBe(false);
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(3);
+  expect(sent[2]?.message.customType).toBe("subagent_question");
 });
 
 it("reports unreadable result as unknown", async () => {

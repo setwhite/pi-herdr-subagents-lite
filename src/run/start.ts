@@ -60,6 +60,7 @@ export async function start(state: RunState, profileName: string, task: string):
     lastHandledSeq: 0,
     lastDeliveredText: null,
     pollFailures: 0,
+    blocked: false,
     live: true,
   };
   // Reserve the slot before the first await: concurrent run() calls must see it.

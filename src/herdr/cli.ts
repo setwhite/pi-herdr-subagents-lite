@@ -35,7 +35,7 @@ function parseHerdrError(text: string): HerdrErrorBody | null {
   }
 }
 
-function runHerdr(args: string[]): Promise<string> {
+export function execHerdrText(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       "herdr",
@@ -58,9 +58,10 @@ function runHerdr(args: string[]): Promise<string> {
 }
 
 export type ExecHerdr = <T>(args: string[]) => Promise<T>;
+export type ExecHerdrText = (args: string[]) => Promise<string>;
 
 export async function execHerdrJson<T>(args: string[]): Promise<T> {
-  const stdout = await runHerdr(args);
+  const stdout = await execHerdrText(args);
   let parsed: { result?: T; error?: HerdrErrorBody };
   try {
     parsed = JSON.parse(stdout) as { result?: T; error?: HerdrErrorBody };

@@ -5,7 +5,7 @@ import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import { createRunService, type RunService } from "../run/index.ts";
 import type { ExitReceiptReader, ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
-import { createTool, type ResultMessage, type SubagentTool, sendResult } from "../tool/index.ts";
+import { createTool, type ResultMessage, type SubagentTool, sendQuestion, sendResult } from "../tool/index.ts";
 import { watchAutoExit } from "./auto-exit.ts";
 
 export interface ExtensionDeps {
@@ -96,6 +96,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         maxResultChars: config.maxResultChars,
       });
       service.onResult((result) => sendResult(pi, result));
+      service.onQuestion((question) => sendQuestion(pi, question));
     };
 
     pi.on("session_start", (_event, ctx) => {

@@ -212,7 +212,7 @@ Full result: <childSession>.result-3.md
 | 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane_exited)` |
 
 - 已经投递过的 run 不再因回执重复投递。
-- 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 失败）、`close_failed`（关 tab 失败后补投）。
+- 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 或 `agent read` 失败）、`close_failed`（关 tab 失败后补投）。
 
 ~~~text
 [subagent explore-1] unknown (pane_exited)
