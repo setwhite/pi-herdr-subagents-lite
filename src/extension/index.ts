@@ -1,6 +1,6 @@
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { createBridge } from "../bridge/index.ts";
-import type { BlockedKind, Config } from "../config/index.ts";
+import type { BlockedKind, Config, ShutdownReason } from "../config/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
 import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
@@ -31,7 +31,10 @@ export type { SubagentTool };
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
 type SettledHandler = (event: { type: "agent_settled" }, ctx: SessionContext) => void;
-type ShutdownHandler = (event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void;
+type ShutdownHandler = (
+  event: { type: "session_shutdown"; reason: ShutdownReason },
+  ctx: SessionContext,
+) => void | Promise<void>;
 type PromptHandler = (event: { kind: BlockedKind; title?: string }) => void;
 
 export interface ExtensionRegistrar {
@@ -115,13 +118,24 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
       startInbox(ctx);
     });
 
-    pi.on("session_shutdown", (event, ctx) => {
+    pi.on("session_shutdown", async (event, ctx) => {
       stopInbox();
-      service?.shutdown();
+      const closing = service;
       service = undefined;
       const sessionFile = ctx.sessionManager.getSessionFile();
       if (sessionFile && hasInbox(sessionFile)) {
         deps.writeExitReceipt(sessionFile, event.reason);
+      }
+      if (closing && config.closeChildrenOn.includes(event.reason)) {
+        const { kept, failed } = await closing.closeChildren();
+        for (const name of kept) {
+          ctx.ui.notify(`child "${name}" kept: its tab was not a single pane`, "warning");
+        }
+        for (const failure of failed) {
+          ctx.ui.notify(`child "${failure.name}" close failed: ${failure.reason}`, "error");
+        }
+      } else {
+        closing?.shutdown();
       }
     });
 

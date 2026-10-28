@@ -20,6 +20,8 @@ export interface CloseTabInput {
   paneId: string;
 }
 
+export type CloseTabResult = "closed" | "kept" | "missing";
+
 export interface RenameTabInput {
   tabId: string;
   label: string;
@@ -70,7 +72,7 @@ export function createPaneCommands(exec: ExecHerdr) {
       return result.panes.some((pane) => pane.pane_id === paneId);
     },
 
-    async closeTabIfOnlyPane({ tabId, paneId }: CloseTabInput): Promise<"closed" | "kept"> {
+    async closeTabIfOnlyPane({ tabId, paneId }: CloseTabInput): Promise<CloseTabResult> {
       try {
         const { tab } = await exec<{ tab: TabInfo }>(["tab", "get", tabId]);
         if (tab.pane_count !== 1) {
@@ -85,7 +87,7 @@ export function createPaneCommands(exec: ExecHerdr) {
         return "closed";
       } catch (error) {
         if (error instanceof HerdrHostError && error.code === "tab_not_found") {
-          return "kept";
+          return "missing";
         }
         throw error;
       }

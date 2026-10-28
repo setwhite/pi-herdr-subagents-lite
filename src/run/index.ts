@@ -1,13 +1,14 @@
 import { join } from "node:path";
 import { dataDir } from "../config/index.ts";
 import { agentDir } from "../profile/index.ts";
+import { type CloseChildrenResult, closeRuns } from "./close.ts";
 import { createNamer } from "./naming.ts";
 import { stopPoll } from "./poll.ts";
 import type { QuestionHandler } from "./question.ts";
 import type { ResultHandler } from "./result.ts";
 import { type SendResult, send } from "./send.ts";
 import { type RunStarted, start } from "./start.ts";
-import type { RunServiceDeps, RunState } from "./state.ts";
+import type { RunRecord, RunServiceDeps, RunState } from "./state.ts";
 
 export interface RunService {
   run(profile: string, task: string): Promise<RunStarted>;
@@ -15,7 +16,17 @@ export interface RunService {
   onResult(handler: ResultHandler): void;
   onQuestion(handler: QuestionHandler): void;
   shutdown(): void;
+  closeChildren(): Promise<CloseChildrenResult>;
   active(): string[];
+}
+
+function takeRuns(state: RunState): RunRecord[] {
+  const runs = [...state.runs];
+  for (const run of runs) {
+    state.settle(run);
+  }
+  state.runs.length = 0;
+  return runs;
 }
 
 export function createRunService(deps: RunServiceDeps): RunService {
@@ -70,15 +81,17 @@ export function createRunService(deps: RunServiceDeps): RunService {
     },
     shutdown() {
       stopPoll(state);
-      for (const run of state.runs) {
-        state.settle(run);
-      }
-      state.runs.length = 0;
+      takeRuns(state);
+    },
+    closeChildren() {
+      stopPoll(state);
+      return closeRuns(state, takeRuns(state));
     },
     active: () => state.active(),
   };
 }
 
+export type { CloseChildrenResult } from "./close.ts";
 export { ToolError } from "./errors.ts";
 export type { QuestionHandler, RunQuestion } from "./question.ts";
 export { profileLabel } from "./resolve.ts";

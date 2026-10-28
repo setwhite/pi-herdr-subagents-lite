@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { loadConfig } from "../src/config/index.ts";
+import { loadConfig, type ShutdownReason } from "../src/config/index.ts";
 import {
   createExtension,
   type ExtensionRegistrar,
@@ -14,6 +14,7 @@ import {
 import {
   type AgentEntry,
   type AgentSnapshot,
+  type CloseTabResult,
   type HerdrHost,
   HerdrHostError,
   type ResumeAgentInput,
@@ -39,13 +40,16 @@ interface Notification {
 }
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
+type ShutdownHandler = (
+  event: { type: "session_shutdown"; reason: ShutdownReason },
+  ctx: SessionContext,
+) => void | Promise<void>;
 type PromptEvent = { kind: "select" | "confirm" | "input" | "editor" | "custom"; title?: string };
 
 function fakePi(events: string[] = []) {
   const tools: SubagentTool[] = [];
   const startHandlers: SessionStartHandler[] = [];
-  const shutdownHandlers: Array<(event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void> =
-    [];
+  const shutdownHandlers: ShutdownHandler[] = [];
   const settledHandlers: Array<(event: { type: "agent_settled" }, ctx: SessionContext) => void> = [];
   const promptStartHandlers: Array<(event: PromptEvent) => void> = [];
   const promptEndHandlers: Array<(event: PromptEvent) => void> = [];
@@ -68,7 +72,7 @@ function fakePi(events: string[] = []) {
       handler:
         | SessionStartHandler
         | ((event: { type: "agent_settled" }, ctx: SessionContext) => void)
-        | ((event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void)
+        | ShutdownHandler
         | ((event: PromptEvent) => void),
     ) {
       if (event === "session_start") {
@@ -87,9 +91,7 @@ function fakePi(events: string[] = []) {
         promptEndHandlers.push(handler as (event: PromptEvent) => void);
         return;
       }
-      shutdownHandlers.push(
-        handler as (event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void,
-      );
+      shutdownHandlers.push(handler as ShutdownHandler);
     },
     registerTool(tool) {
       tools.push(tool);
@@ -128,12 +130,13 @@ function fakePi(events: string[] = []) {
       handler({ type: "session_start", reason: "startup" }, session);
     }
   };
-  const shutdownSession = (reason = "quit") => {
+  const shutdownSession = async (reason: ShutdownReason = "quit") => {
     if (!currentSession) {
       throw new Error("no session");
     }
+    const session = currentSession;
     for (const handler of shutdownHandlers) {
-      handler({ type: "session_shutdown", reason }, currentSession);
+      await handler({ type: "session_shutdown", reason }, session);
     }
   };
   const settle = () => {
@@ -179,7 +182,7 @@ interface FakeHostFailures {
 }
 
 function fakeHost(
-  options: { events?: string[]; failures?: FakeHostFailures; closeTab?: () => "closed" | "kept" | Error } = {},
+  options: { events?: string[]; failures?: FakeHostFailures; closeTab?: () => CloseTabResult | Error } = {},
 ) {
   const calls: string[] = options.events ?? [];
   const tabs: Array<{ cwd: string; label: string; env: Record<string, string> }> = [];
@@ -331,14 +334,14 @@ function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
 
 function loadSession(host: HerdrHost, events: string[] = [], ctx?: Partial<SessionContext>) {
   const fake = fakePi(events);
-  const { pi, sent, shutdownSession, startSession, tools } = fake;
+  const { notifications, pi, sent, shutdownSession, startSession, tools } = fake;
   registerExtension(pi, host);
   startSession(ctx);
   const tool = tools[0];
   if (tools.length !== 1 || !tool) {
     throw new Error(`expected one registered tool, got ${tools.length}`);
   }
-  return { sent, setSendFailures: fake.setSendFailures, shutdownSession, startSession, tool };
+  return { notifications, sent, setSendFailures: fake.setSendFailures, shutdownSession, startSession, tool };
 }
 
 function loadTool(host: HerdrHost, ctx?: Partial<SessionContext>) {
@@ -347,7 +350,7 @@ function loadTool(host: HerdrHost, ctx?: Partial<SessionContext>) {
 
 function loadTimedSession(
   getAgent: (name: string) => Promise<AgentSnapshot | null>,
-  closeTab?: () => "closed" | "kept" | Error,
+  closeTab?: () => CloseTabResult | Error,
 ) {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
@@ -1825,7 +1828,7 @@ it("does not split surrogate pairs when truncating", async () => {
   expect(content).not.toMatch(/\p{Cs}/u);
 });
 
-async function expectDoneDespiteClose(closeTab: () => "closed" | "kept" | Error, closeFailed = false) {
+async function expectDoneDespiteClose(closeTab: () => CloseTabResult | Error, closeFailed = false) {
   writeProfile("worker.md", "---\nauto-exit: true\n---\n\nWorker body.\n");
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }), closeTab);
 
@@ -1867,11 +1870,52 @@ it("stops after session shutdown", async () => {
 
   await runTask(tool, "long task");
 
-  shutdownSession();
+  await shutdownSession();
   await vi.advanceTimersByTimeAsync(5000);
 
   expect(sent).toHaveLength(0);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("closes children on matching reasons", async () => {
+  writeConfig({ closeChildrenOn: ["quit"] });
+  const { calls, sent, shutdownSession, tool } = loadTimedSession(async () => ({
+    status: "working",
+    completionSeq: 0,
+  }));
+
+  await runTasks(tool, 2);
+  await shutdownSession("quit");
+  await vi.advanceTimersByTimeAsync(5000);
+
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(2);
+  expect(sent.filter((message) => message.message.content.includes("unknown"))).toHaveLength(0);
+});
+
+it("keeps children when the reason does not match", async () => {
+  writeConfig({ closeChildrenOn: ["resume"] });
+  const { calls, shutdownSession, tool } = loadTimedSession(async () => ({
+    status: "working",
+    completionSeq: 0,
+  }));
+
+  await runTask(tool, "long task");
+  await shutdownSession("quit");
+
+  expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
+});
+
+it("keeps a tab with several panes", async () => {
+  writeConfig({ closeChildrenOn: ["quit"] });
+  const { notifications, shutdownSession, tool } = loadTimedSession(
+    async () => ({ status: "working", completionSeq: 0 }),
+    () => "kept",
+  );
+
+  await runTask(tool, "long task");
+  await shutdownSession("quit");
+
+  expect(notifications).toEqual([{ message: 'child "worker-1" kept: its tab was not a single pane', type: "warning" }]);
 });
 
 it("shuts down after settle when auto-exit is on", async () => {
@@ -1903,7 +1947,7 @@ it("writes an exit receipt for a child session", async () => {
   writeInbox(sessionFile, [["a.md", "queued"]]);
   const child = loadChild(sessionFile);
 
-  child.shutdownSession("quit");
+  await child.shutdownSession("quit");
 
   expect(JSON.parse(readFileSync(`${sessionFile}.exit`, "utf8"))).toEqual({ reason: "quit" });
 });
@@ -1912,7 +1956,7 @@ it("skips the receipt when there is no inbox", async () => {
   const sessionFile = childSessionFile();
   const child = loadChild(sessionFile);
 
-  child.shutdownSession("quit");
+  await child.shutdownSession("quit");
 
   expect(existsSync(`${sessionFile}.exit`)).toBe(false);
 });
@@ -1969,7 +2013,7 @@ it("stops inbox polling on shutdown", async () => {
 
   await vi.advanceTimersByTimeAsync(250);
   writeInbox(sessionFile, [["b.md", "after shutdown"]]);
-  child.shutdownSession();
+  await child.shutdownSession();
   await vi.advanceTimersByTimeAsync(1000);
 
   expect(child.userMessages).toEqual([{ content: "before shutdown", options: undefined }]);
