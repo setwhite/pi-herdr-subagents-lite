@@ -25,9 +25,9 @@
 | [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
 | [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
 | [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
-| [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
+| [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`BlockedKind`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
 | [`profile`](modules/profile.md) | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
-| `bridge` | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` | 从 `extension` 拆（T28） |
+| [`bridge`](modules/bridge.md) | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` | 从 `extension` 拆（T28） |
 
 入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
 
@@ -55,7 +55,7 @@ run -> profile
 run -> session-file
 run -> inbox
 run -> config
-bridge -> config
+bridge ..> config      (type-only)
 profile -> config
 ~~~
 
@@ -68,7 +68,7 @@ profile -> config
 
 ## 4. 模块说明
 
-每个模块的用法与取舍见 `docs/modules/<module>.md`，入口是上表的模块链接；`bridge` 还没实现，任务见 [T28](todos/T28.md)。
+每个模块的用法与取舍见 `docs/modules/<module>.md`，入口是上表的模块链接。
 
 ## 5. 测试 seam
 

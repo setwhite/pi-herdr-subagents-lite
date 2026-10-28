@@ -10,13 +10,14 @@ import { join, relative } from "node:path";
 const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session-file"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "run", "herdr", "session-file", "inbox", "tool"],
+  extension: ["config", "extension", "profile", "run", "herdr", "session-file", "inbox", "tool", "bridge"],
   tool: ["config", "profile", "run", "tool"],
   run: ["config", "run", "profile", "herdr", "session-file", "inbox"],
   profile: ["config", "profile"],
   herdr: ["herdr"],
   "session-file": ["session-file"],
   inbox: ["inbox"],
+  bridge: ["bridge", "config"],
 };
 
 /** 只允许出现在指定位置的依赖；typeOnlyIn 里的文件必须写成 `import type`。 */
@@ -54,8 +55,8 @@ const SINGLE_IMPORT = [
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session-file)\/index\.ts$/,
-    only: ["src/extension/index.ts", "src/profile/", "src/run/", "src/tool/"],
-    typeOnlyIn: ["src/extension/index.ts", "src/tool/"],
+    only: ["src/extension/index.ts", "src/profile/", "src/run/", "src/tool/", "src/bridge/"],
+    typeOnlyIn: ["src/extension/index.ts", "src/tool/", "src/bridge/"],
   },
 ];
 

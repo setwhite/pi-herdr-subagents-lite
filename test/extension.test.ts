@@ -39,6 +39,7 @@ interface Notification {
 }
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
+type PromptEvent = { kind: "select" | "confirm" | "input" | "editor" | "custom"; title?: string };
 
 function fakePi(events: string[] = []) {
   const tools: SubagentTool[] = [];
@@ -46,8 +47,9 @@ function fakePi(events: string[] = []) {
   const shutdownHandlers: Array<(event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void> =
     [];
   const settledHandlers: Array<(event: { type: "agent_settled" }, ctx: SessionContext) => void> = [];
-  const promptStartHandlers: Array<() => void> = [];
-  const promptEndHandlers: Array<() => void> = [];
+  const promptStartHandlers: Array<(event: PromptEvent) => void> = [];
+  const promptEndHandlers: Array<(event: PromptEvent) => void> = [];
+  const emitted: Array<{ channel: string; data: unknown }> = [];
   const sent: SentMessage[] = [];
   const userMessages: SentUserMessage[] = [];
   const notifications: Notification[] = [];
@@ -56,13 +58,18 @@ function fakePi(events: string[] = []) {
   let sendUserMessageImpl: (content: string) => void = () => {};
   let sendFailures = 0;
   const pi: ExtensionRegistrar = {
+    events: {
+      emit(channel, data) {
+        emitted.push({ channel, data });
+      },
+    },
     on(
       event: "session_start" | "session_shutdown" | "agent_settled" | "ui_prompt_start" | "ui_prompt_end",
       handler:
         | SessionStartHandler
         | ((event: { type: "agent_settled" }, ctx: SessionContext) => void)
         | ((event: { type: "session_shutdown"; reason: string }, ctx: SessionContext) => void)
-        | (() => void),
+        | ((event: PromptEvent) => void),
     ) {
       if (event === "session_start") {
         startHandlers.push(handler as SessionStartHandler);
@@ -73,11 +80,11 @@ function fakePi(events: string[] = []) {
         return;
       }
       if (event === "ui_prompt_start") {
-        promptStartHandlers.push(handler as () => void);
+        promptStartHandlers.push(handler as (event: PromptEvent) => void);
         return;
       }
       if (event === "ui_prompt_end") {
-        promptEndHandlers.push(handler as () => void);
+        promptEndHandlers.push(handler as (event: PromptEvent) => void);
         return;
       }
       shutdownHandlers.push(
@@ -137,19 +144,20 @@ function fakePi(events: string[] = []) {
       handler({ type: "agent_settled" }, currentSession);
     }
   };
-  const prompt = (pair: "start" | "end") => {
+  const prompt = (pair: "start" | "end", event: PromptEvent) => {
     for (const handler of pair === "start" ? promptStartHandlers : promptEndHandlers) {
-      handler();
+      handler(event);
     }
   };
   return {
+    emitted,
     get shutdowns() {
       return shutdowns;
     },
     notifications,
     pi,
-    promptEnd: () => prompt("end"),
-    promptStart: () => prompt("start"),
+    promptEnd: (event: PromptEvent = { kind: "custom" }) => prompt("end", event),
+    promptStart: (event: PromptEvent = { kind: "custom" }) => prompt("start", event),
     sent,
     setSendFailures(count: number) {
       sendFailures = count;
@@ -1131,6 +1139,17 @@ it("skips registration when disabled", () => {
   startSession();
 
   expect(tools).toHaveLength(0);
+});
+
+it("emits without the subagent tool", () => {
+  writeConfig({ enabled: false });
+  const { emitted, pi, promptStart, startSession } = fakePi();
+
+  registerExtension(pi, fakeHost().host);
+  startSession();
+  promptStart({ kind: "custom", title: "Pick one" });
+
+  expect(emitted).toEqual([{ channel: "herdr:blocked", data: { active: true, label: "Pick one" } }]);
 });
 
 it("expands profiles in guidelines", () => {

@@ -21,7 +21,7 @@ import {
 
 export { isRaw, type Raw } from "./schema.ts";
 
-type BlockedKind = (typeof BLOCKED_KINDS)[number];
+export type BlockedKind = (typeof BLOCKED_KINDS)[number];
 type ShutdownReason = (typeof SHUTDOWN_REASONS)[number];
 
 interface PromptOverrides {
