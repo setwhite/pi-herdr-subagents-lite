@@ -59,6 +59,7 @@ export async function start(state: RunState, profileName: string, task: string):
     autoExit: profile.autoExit,
     lastHandledSeq: 0,
     lastDeliveredText: null,
+    artifactSeq: 0,
     pollFailures: 0,
     blocked: false,
     live: true,

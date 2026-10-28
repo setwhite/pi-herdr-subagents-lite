@@ -14,7 +14,9 @@ function resultText(result: RunResult): string {
   if (result.state === "unknown") {
     return `[subagent ${result.name}] unknown (${result.reason})\n\nSession: ${result.sessionFile}`;
   }
-  return `[subagent ${result.name}] done\n\n${result.text}`;
+  const artifact = result.artifact ? `\n\nFull result: ${result.artifact}` : "";
+  const warning = result.warning ? `\n\n${result.warning}` : "";
+  return `[subagent ${result.name}] done\n\n${result.text}${artifact}${warning}`;
 }
 
 const QUESTION_FOOTER = [

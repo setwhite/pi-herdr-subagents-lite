@@ -16,6 +16,7 @@
 | **completion_seq** | herdr 记录的完成序号；v1 与该 run 的 `lastHandledSeq` 比较去重 | 不是消息 id，也不代表已读 |
 | **blocked** | agent 正在等人处理输入；v1 由 bridge 监听 `ui_prompt_*` 上报 | 不靠屏幕检测 |
 | **bridge** | 同一扩展内的监听器；`ui_prompt_start/end` → `herdr:blocked`（v1） | 不是 herdr 自带集成，也不是第二个入口 |
+| **结果 artifact** | 超限结果的全文文件，`<childSession>.result-<seq>.md`；消息带 `Full result:` 路径 | 不是子 session 文件，也不是每次结果都写 |
 | **subagent_result** | 回投父会话的异步结果消息 | 不是工具的同步返回值 |
 | **subagent_question** | 子代理 blocked 时，父侧转发其 pane 末尾文本的消息（v1） | 不是子代理主动调的工具 |
 | **auto-exit** | profile 字段；true = 子代理收工后自己 shutdown，父侧关 tab（v1） | 不是全局配置 |

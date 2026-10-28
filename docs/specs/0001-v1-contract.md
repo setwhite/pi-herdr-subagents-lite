@@ -139,7 +139,8 @@ v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当�
 | `name_exhausted` | 自动命名重试 100 次仍冲突 | 当前 live 名称；关一个再试 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |
 | `session_missing` | send 的 run 记录存在，但子 session 文件不存在 | 用 run 新建 |
-| `artifact_write_failed` | 结果超限且 artifact 写失败 | 消息带截断头部和警告，不算工具错误 |
+
+结果 artifact 写失败不是工具错误：不返回 `isError`，结果消息保留截断头部并附警告。
 
 - 只覆盖 `guidelines` 且没写 `{{profiles}}` 时，模型看不到 profile 列表；`snippet: ""` 的实际效果是从 Available tools 隐藏。
 
@@ -193,6 +194,7 @@ Full result: <childSession>.result-3.md
 ~~~
 
 - 只有超过 `maxResultChars` 才写 artifact，并带 `Full result:` 行；未超限时消息不带路径。
+- artifact 的 `seq` 按 run 内已写成的 artifact 递增，重启后继续，不重置。
 - 聚合时一条消息里放多个块：
 
 ~~~text

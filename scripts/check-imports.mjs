@@ -39,6 +39,7 @@ const SINGLE_IMPORT = [
       "src/session-file/receipt.ts",
       "src/run/start.ts",
       "src/run/send.ts",
+      "src/run/artifact.ts",
     ],
   },
   {

@@ -26,6 +26,7 @@ export interface RunRecord {
   autoExit: boolean;
   lastHandledSeq: number;
   lastDeliveredText: string | null;
+  artifactSeq: number;
   timer?: ReturnType<typeof setTimeout>;
   pollFailures: number;
   blocked: boolean;

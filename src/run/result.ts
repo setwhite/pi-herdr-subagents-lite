@@ -1,3 +1,4 @@
+import { writeArtifact } from "./artifact.ts";
 import type { RunRecord } from "./state.ts";
 import { leadingChars } from "./truncate.ts";
 
@@ -5,6 +6,8 @@ export interface DoneResult {
   state: "done";
   name: string;
   text: string;
+  artifact?: string;
+  warning?: string;
   sessionFile: string;
   paneId: string;
 }
@@ -23,21 +26,21 @@ export type RunResult = DoneResult | UnknownResult;
 
 export type ResultHandler = (results: RunResult[]) => void | Promise<void>;
 
-export function resultText(text: string, limit: number, sessionFile: string): string {
-  if (text.length <= limit) {
-    return text;
-  }
-  return `${leadingChars(text, limit)}\n\n[truncated at ${limit} characters]\n\nSession: ${sessionFile}`;
-}
-
 export function doneResult(run: RunRecord, text: string, limit: number): DoneResult {
-  return {
-    state: "done",
-    name: run.name,
-    text: resultText(text, limit, run.sessionFile),
-    sessionFile: run.sessionFile,
-    paneId: run.paneId,
-  };
+  const base = { state: "done" as const, name: run.name, sessionFile: run.sessionFile, paneId: run.paneId };
+  if (text.length <= limit) {
+    return { ...base, text };
+  }
+  const head = leadingChars(text, limit);
+  const seq = run.artifactSeq + 1;
+  try {
+    const artifact = writeArtifact(run.sessionFile, seq, text);
+    run.artifactSeq = seq;
+    return { ...base, text: head, artifact };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ...base, text: head, warning: `[artifact write failed: ${detail}]` };
+  }
 }
 
 export function unknownResult(run: RunRecord, reason: UnknownReason): UnknownResult {
