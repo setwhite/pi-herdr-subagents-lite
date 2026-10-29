@@ -26,7 +26,6 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `closeChildrenOn` | string[] | `new` / `resume` / `fork` / `quit` / `reload` | 空 = 不关；命中 `session_shutdown.reason` 时关该父会话的子 tab |
 | `inboxPollMs` | integer | 越界 clamp | 子侧 inbox 轮询间隔 |
 | `pollIntervalMs` | integer | 越界 clamp | 父侧 `agent list` 轮询间隔 |
-| `questionLines` | integer | 越界 clamp | blocked 时读 pane 的行数 |
 | `prompts` | object | — | 提示词覆盖；键与展开见 `src/tool/text.ts` |
 | `bridge` | object | — | 见第 7 节 |
 
@@ -55,15 +54,14 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `description` | string | 空 | 出现在工具 guidelines 的 profile 列表 |
 | `model` | string | 继承父 | provider/model 或 pi 支持的 pattern |
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
-| `tools` | string | pi 默认 | 纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
+| `tools` | string | `-<toolName>` | 省略 = pi 默认集去掉本工具（防嵌套）；纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项（`<agent-dir>/skills/<name>`）；列表项是名字，不带 `+` / `-` |
-| `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动；与父 cwd 不同时在新 workspace 里开 tab，相同则在同 workspace 开新 tab |
 | `system-prompt` | string | append | append / replace / task；省略 = append，见 [D51](../decisions/D51-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
 
 - `ask_user_question` 不自动加入；想反问就写进 `tools`。
-- `subagent` 不特殊处理；不管理嵌套深度，不强制拦截；不想嵌套就在 `tools` 里不写它，或在提示词里禁止。
+- 子代理默认没有本工具，嵌套要显式打开：在 `tools` 里写上工具名（通常是 `subagent`）。不管理嵌套深度。
 - 未知字段忽略；解析失败只跳过该 profile，并在工具错误里说明。
 
 ## 3. 工具
@@ -83,6 +81,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `action` | run / send | 是 | run / send | 选择动作 |
 | `profile` | run | 是 | string | profile 名；未知时报错并列出可用 profile |
 | `task` | run | 是 | string | 自包含任务；原样写入 brief，不要再写 `# Task` 段；brief 会落盘，不写密钥 |
+| `cwd` | run | 否 | string | 子进程工作目录；相对路径按父 cwd 解析，`~` 展开为 home；省略 = 父 cwd |
 | `name` | send | 是 | string | run 返回的子代理名 |
 | `message` | send | 是 | string | 新消息 |
 
@@ -116,6 +115,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 ~~~json
 {"action":"run","profile":"explore","task":"Find every place that reads HERDR_ENV and summarize the call chain."}
+{"action":"run","profile":"explore","task":"Review the migration.","cwd":"../billing"}
 {"action":"send","name":"explore-1","message":"Also check the Windows-specific branch."}
 ~~~
 
@@ -144,6 +144,8 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | name 不在 run 记录 | 不投递 | `unknown_agent` |
 
 「尾部干净」只看有没有未完成的 toolCall；以 assistant 文本、toolResult、user 或 custom 消息结尾都算干净。
+
+重启用 run 记录的 `cwd`，不重读 profile；改 profile 的 cwd 不影响已启动的子代理。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
 
 ## 6. 结果消息
 
@@ -181,7 +183,7 @@ Full result: <childSession>.result-3.md
 | 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane_exited)` |
 
 - 已经投递过的 run 不再因回执重复投递。
-- 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 或 `agent read` 失败）、`close_failed`（关 tab 失败后补投）。
+- 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 失败）、`close_failed`（关 tab 失败后补投）。
 
 ~~~text
 [subagent explore-1] unknown (pane_exited)
@@ -190,18 +192,22 @@ Session: <childSession>
 ~~~
 
 - 死亡消息是该 run 的终态：最多一条，不受 `lastHandledSeq` 约束。
-- 子代理 blocked（`agent_status = blocked`）时，父侧读一次 pane 末尾并发 `subagent_question`：
+- 子代理 blocked（`agent_status = blocked`）时，父侧从子 session 尾部取最后一个 assistant 消息的 toolCall 参数，发一次 `subagent_question`：
 
 ~~~text
 [subagent explore-1] blocked (question)
 
-<child pane 末尾 questionLines 行纯文本>
+Confirm: Do you want to continue?
+- Yes
+- No — stop here
 
 The human answers it in the child's pane. A follow-up sent with send is
 queued until the dialog closes.
 ~~~
 
+- 问题正文来自 toolCall 参数：有 `questions` 数组时取每项的 `header` / `question` 与 `options`；没有时取 `question` / `title` / `message` / `prompt` / `text` 里的第一个字符串；都没有就只发头部与尾注。
 - 同一个 blocked 只发一次，离开 blocked 后重置。
+- 投递失败不重发；父会话收到一条 `delivery failed` 通知。
 - `auto-exit: true` 的子代理退出后，父侧先投递结果，再关只含该 pane 的 tab。
 
 ## 7. bridge

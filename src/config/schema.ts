@@ -1,11 +1,13 @@
 export const CONFIG_KEYS = [
   "enabled",
   "toolName",
+  "herdrBin",
   "maxConcurrent",
   "maxResultChars",
   "aggregateWindowMs",
   "closeChildrenOn",
   "inboxPollMs",
+  "pollIntervalMs",
   "prompts",
   "bridge",
 ];
@@ -91,6 +93,18 @@ export function stringArray(scope: Scope, key: string): string[] | undefined {
   }
   scope.problems.push(`${scope.prefix}${key}: expected string array`);
   return undefined;
+}
+
+export function nonEmptyString(scope: Scope, key: string, fallback: string): string {
+  const value = optionalString(scope, key);
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value.trim() === "") {
+    scope.problems.push(`${scope.prefix}${key}: expected a non-empty string`);
+    return fallback;
+  }
+  return value;
 }
 
 export function toolName(scope: Scope): string {

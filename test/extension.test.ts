@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -196,7 +196,6 @@ function fakeHost(
   const paneAgents = new Map<string, string>();
   let agentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
   let listAgentsImpl: (() => Promise<AgentEntry[]>) | undefined;
-  let readAgentImpl: () => Promise<string> = async () => "Do you want to continue?";
   const host: HerdrHost = {
     async createWorkspace(input) {
       calls.push("createWorkspace");
@@ -257,11 +256,6 @@ function fakeHost(
       return entries;
     },
 
-    async readAgent() {
-      calls.push("readAgent");
-      return readAgentImpl();
-    },
-
     async closeTabIfOnlyPane() {
       calls.push("closeTabIfOnlyPane");
       const outcome = options.closeTab?.() ?? "closed";
@@ -285,9 +279,6 @@ function fakeHost(
     },
     setListAgents(impl: () => Promise<AgentEntry[]>) {
       listAgentsImpl = impl;
-    },
-    setReadAgent(impl: () => Promise<string>) {
-      readAgentImpl = impl;
     },
     setPaneExists(value: boolean) {
       paneExists = value;
@@ -329,7 +320,7 @@ function writeProjectProfile(fileName: string, content: string) {
 
 function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
   createExtension({
-    host,
+    createHost: () => host,
     readLastAssistant,
     readExitReceipt,
     loadConfig: () => loadConfig(resolveAgentDir()),
@@ -429,15 +420,17 @@ function runTasks(tool: SubagentTool, count: number): Promise<RunStarted[]> {
   );
 }
 
-function runTask(tool: SubagentTool, task: string, profile = "worker") {
-  return tool.execute("call-1", { action: "run", profile, task }, undefined, undefined, {} as never);
+function runTask(tool: SubagentTool, task: string, profile = "worker", cwd?: string) {
+  const params =
+    cwd === undefined ? { action: "run" as const, profile, task } : { action: "run" as const, profile, task, cwd };
+  return tool.execute("call-1", params, undefined, undefined, {} as never);
 }
 
 function sendTask(tool: SubagentTool, name: string, message: string) {
   return tool.execute("call-2", { action: "send", name, message }, undefined, undefined, {} as never);
 }
 
-async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot } = {}) {
+async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot; cwd?: string } = {}) {
   vi.useFakeTimers();
   process.env.HERDR_ENV = "1";
   const profile = options.profile ?? "explore";
@@ -452,7 +445,7 @@ async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot
     return fake.resumed.length > 0 ? afterResume : beforeResume;
   });
   const session = loadSession(fake.host);
-  const started = parseStarted(await runTask(session.tool, "inspect the repo", profile));
+  const started = parseStarted(await runTask(session.tool, "inspect the repo", profile, options.cwd));
   name = started.name;
   writeFileSync(started.sessionFile, `${assistantLine("old result")}\n`);
   await vi.advanceTimersByTimeAsync(1000);
@@ -469,16 +462,18 @@ async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot
 
 function startRun(
   fake: ReturnType<typeof fakeHost>,
-  options: { profile?: string; task?: string } = {},
+  options: { profile?: string; task?: string; cwd?: string } = {},
 ): Promise<{ agent: StartAgentInput; started: RunStarted }> {
-  return runTask(loadTool(fake.host), options.task ?? "inspect the repo", options.profile).then((result) => {
-    const started = parseStarted(result);
-    const agent = fake.agents[0];
-    if (!agent) {
-      throw new Error("expected startAgent to be called");
-    }
-    return { agent, started };
-  });
+  return runTask(loadTool(fake.host), options.task ?? "inspect the repo", options.profile, options.cwd).then(
+    (result) => {
+      const started = parseStarted(result);
+      const agent = fake.agents[0];
+      if (!agent) {
+        throw new Error("expected startAgent to be called");
+      }
+      return { agent, started };
+    },
+  );
 }
 
 function firstText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -505,17 +500,21 @@ function longResult() {
   return { head, full: `${head}TAIL_MARKER` };
 }
 
-function pendingAskLine(): string {
+function askLine(args: unknown): string {
   return JSON.stringify({
     type: "message",
     message: {
       role: "assistant",
       content: [
         { type: "text", text: "Need a decision." },
-        { type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} },
+        { type: "toolCall", id: "call-1", name: "ask_user_question", arguments: args },
       ],
     },
   });
+}
+
+function pendingAskLine(): string {
+  return askLine({});
 }
 
 const tempDirs = new Set<string>();
@@ -643,9 +642,7 @@ it("launches a worker", async () => {
   expect(fake.tabs).toEqual([{ cwd: process.cwd(), label: "worker-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } }]);
   expect(agent).toMatchObject({ name: "worker-1", paneId: started.paneId, sessionFile: started.sessionFile });
   const brief = await readFile(agent.briefFile, "utf8");
-  expect(brief).toContain("inspect the repo");
-  expect(brief).toContain("You are a worker subagent");
-  expect(brief).toContain("Do not spawn subagents");
+  expect(brief).toBe("# Task\ninspect the repo\n");
 });
 
 it("writes the child session under the agent dir", async () => {
@@ -691,16 +688,27 @@ it("starts a run with a global profile", async () => {
   expect(started).toMatchObject({ state: "running", name: "explore-1", paneId: "w1:p1" });
 });
 
-it("uses the profile cwd", async () => {
+it("uses the cwd parameter", async () => {
   process.env.HERDR_ENV = "1";
-  writeProfile("worker.md", "---\ncwd: sub\n---\n\nWorker body.\n");
-  const nested = fakeHost();
+  const relative = fakeHost();
 
-  await startRun(nested);
+  await startRun(relative, { cwd: "sub" });
 
-  expect(nested.tabs.map((tab) => tab.cwd)).toEqual([join(process.cwd(), "sub")]);
+  expect(relative.tabs.map((tab) => tab.cwd)).toEqual([join(process.cwd(), "sub")]);
 
-  writeProfile("worker.md", "---\ndescription: no cwd\n---\n\nWorker body.\n");
+  const absolute = fakeHost();
+  const target = join(process.cwd(), "other");
+
+  await startRun(absolute, { cwd: target });
+
+  expect(absolute.tabs.map((tab) => tab.cwd)).toEqual([target]);
+
+  const tilde = fakeHost();
+
+  await startRun(tilde, { cwd: "~/infra" });
+
+  expect(tilde.tabs.map((tab) => tab.cwd)).toEqual([join(homedir(), "infra")]);
+
   const plain = fakeHost();
 
   await startRun(plain);
@@ -710,10 +718,9 @@ it("uses the profile cwd", async () => {
 
 it("creates a workspace when the cwd differs", async () => {
   process.env.HERDR_ENV = "1";
-  writeProfile("worker.md", "---\ncwd: sub\n---\n\nWorker body.\n");
   const fake = fakeHost();
 
-  await startRun(fake);
+  await startRun(fake, { cwd: "sub" });
 
   expect(fake.calls.filter((call) => call === "createWorkspace")).toHaveLength(1);
   expect(fake.workspaces).toEqual([{ cwd: join(process.cwd(), "sub"), label: "worker-1" }]);
@@ -780,6 +787,25 @@ it("maps tools", async () => {
     expect(agent.agentArgs).toEqual(expect.arrayContaining(expected));
     expect(agent.agentArgs).not.toContain(expected[0] === "--no-tools" ? "--tools" : "--no-tools");
   }
+});
+
+it("removes the subagent tool by default", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\ndescription: worker\n---\n\nWorker body.\n");
+
+  const { agent } = await startRun(fakeHost());
+
+  expect(agent.agentArgs).toEqual(expect.arrayContaining(["--tools", "-subagent"]));
+});
+
+it("removes the renamed tool by default", async () => {
+  process.env.HERDR_ENV = "1";
+  writeConfig({ toolName: "child" });
+  writeProfile("worker.md", "---\ndescription: worker\n---\n\nWorker body.\n");
+
+  const { agent } = await startRun(fakeHost());
+
+  expect(agent.agentArgs).toEqual(expect.arrayContaining(["--tools", "-child"]));
 });
 
 it("maps skills", async () => {
@@ -886,6 +912,16 @@ it("opens a new tab when the pane is gone", async () => {
   expect(fake.tabs.at(-1)).toEqual({ cwd: process.cwd(), label: "explore-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } });
   expect(fake.resumed[0]?.paneId).toBe("w1:p2");
   expect(fake.resumed[0]?.sessionFile).toBe(started.sessionFile);
+});
+
+it("restarts in the recorded cwd", async () => {
+  writeProfile("explore.md", "---\nmodel: old/model\n---\n\nExplore body.\n");
+  const { fake, tool } = await exitedChild({ profile: "explore", cwd: "sub" });
+  fake.setPaneExists(false);
+
+  await sendTask(tool, "explore-1", "continue the task");
+
+  expect(fake.tabs.at(-1)?.cwd).toBe(join(process.cwd(), "sub"));
 });
 
 it("refuses a dirty session", async () => {
@@ -1717,16 +1753,39 @@ it("waits while the worker is blocked in a tool call", async () => {
 });
 
 it("asks once per blocked episode", async () => {
-  const { calls, sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+  const { sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
 
-  await runTask(tool, "ask the human");
+  const started = parseStarted(await runTask(tool, "ask the human"));
+  writeFileSync(
+    started.sessionFile,
+    `${askLine({
+      questions: [
+        {
+          header: "Confirm",
+          question: "Do you want to continue?",
+          options: [{ label: "Yes" }, { label: "No", description: "stop here" }],
+        },
+      ],
+    })}\n`,
+  );
   await vi.advanceTimersByTimeAsync(3000);
 
   expect(sent).toHaveLength(1);
   expect(sent[0]?.message.customType).toBe("subagent_question");
   expect(sent[0]?.message.content).toContain("[subagent worker-1] blocked (question)");
-  expect(sent[0]?.message.content).toContain("Do you want to continue?");
-  expect(calls.filter((call) => call === "readAgent")).toHaveLength(1);
+  expect(sent[0]?.message.content).toContain("Confirm: Do you want to continue?");
+  expect(sent[0]?.message.content).toContain("- Yes");
+  expect(sent[0]?.message.content).toContain("- No — stop here");
+});
+
+it("sends a blocked message without text when the tail has no question", async () => {
+  const { sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+
+  await runTask(tool, "ask the human");
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content.startsWith("[subagent worker-1] blocked (question)\n\nThe human answers")).toBe(true);
 });
 
 it("asks again after leaving blocked", async () => {
@@ -1746,38 +1805,18 @@ it("asks again after leaving blocked", async () => {
   expect(sent).toHaveLength(2);
 });
 
-it("does not read the pane when idle", async () => {
-  const { calls, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 0 }));
-
-  await runTask(tool, "just work");
-  await vi.advanceTimersByTimeAsync(3000);
-
-  expect(calls.filter((call) => call === "readAgent")).toHaveLength(0);
-});
-
-it("settles after three read failures", async () => {
-  const { fake, sent, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
-  fake.setReadAgent(async () => {
-    throw new Error("pane is gone");
-  });
-
-  await runTask(tool, "ask the human");
-  await vi.advanceTimersByTimeAsync(2000);
-  expect(sent).toHaveLength(0);
-
-  await vi.advanceTimersByTimeAsync(1000);
-  expect(sent).toHaveLength(1);
-  expect(sent[0]?.message.content).toContain("unknown (poll_failed)");
-});
-
 it("does not repeat a question when delivery fails", async () => {
-  const { sent, setSendFailures, tool } = loadTimedSession(async () => ({ status: "blocked", completionSeq: 0 }));
+  const { notifications, sent, setSendFailures, tool } = loadTimedSession(async () => ({
+    status: "blocked",
+    completionSeq: 0,
+  }));
   setSendFailures(1);
 
   await runTask(tool, "ask the human");
   await vi.advanceTimersByTimeAsync(3000);
 
   expect(sent).toHaveLength(0);
+  expect(notifications).toEqual([{ message: "delivery failed: send failed", type: "error" }]);
 });
 
 it("asks again after a revived blocked run", async () => {
@@ -2048,7 +2087,7 @@ it("reports a deferred delivery failure", async () => {
 
   await vi.advanceTimersByTimeAsync(500);
   expect(sent).toHaveLength(0);
-  expect(notifications.some((notification) => notification.message.includes("result delivery failed"))).toBe(true);
+  expect(notifications.some((notification) => notification.message.includes("delivery failed"))).toBe(true);
 });
 
 it("sends separately when aggregation is off", async () => {

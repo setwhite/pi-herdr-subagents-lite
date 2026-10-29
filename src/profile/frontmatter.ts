@@ -15,7 +15,6 @@ export interface Profile {
   thinking: Thinking | undefined;
   tools: string | undefined;
   skills: string[] | undefined;
-  cwd: string | undefined;
   systemPrompt: SystemPromptMode;
   autoExit: boolean;
   disableModelInvocation: boolean;

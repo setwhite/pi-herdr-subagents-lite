@@ -7,11 +7,13 @@ import { loadConfig } from "../src/config/index.ts";
 const specDefaults = {
   enabled: true,
   toolName: "subagent",
+  herdrBin: "herdr",
   maxConcurrent: 16,
   maxResultChars: 16384,
   aggregateWindowMs: 500,
   closeChildrenOn: [],
   inboxPollMs: 250,
+  pollIntervalMs: 1000,
   prompts: {},
   bridge: { enabled: true, blockedOn: ["custom", "select", "confirm", "input", "editor"] },
 };
@@ -42,6 +44,10 @@ it("keeps the defaults for keys the file omits", () => {
   expect(readConfig({ maxConcurrent: 2 })).toEqual({ ...specDefaults, maxConcurrent: 2 });
 });
 
+it("takes an absolute herdr path", () => {
+  expect(readConfig({ herdrBin: "/opt/herdr/bin/herdr" })).toMatchObject({ herdrBin: "/opt/herdr/bin/herdr" });
+});
+
 it.each([
   [{ maxConcurrent: 0 }, { maxConcurrent: 1 }],
   [{ maxConcurrent: 1000 }, { maxConcurrent: 1000 }],
@@ -51,6 +57,8 @@ it.each([
   [{ aggregateWindowMs: -1 }, { aggregateWindowMs: 0 }],
   [{ inboxPollMs: 1 }, { inboxPollMs: 50 }],
   [{ inboxPollMs: 99999 }, { inboxPollMs: 5000 }],
+  [{ pollIntervalMs: 1 }, { pollIntervalMs: 100 }],
+  [{ pollIntervalMs: 99999 }, { pollIntervalMs: 60000 }],
 ])("clamps %o", (patch, expected) => {
   expect(readConfig(patch)).toMatchObject(expected);
 });
@@ -64,6 +72,9 @@ it.each([
   [{ closeChildrenOn: ["sometimes"] }, /closeChildrenOn.*sometimes/],
   [{ toolName: "Helper" }, /toolName/],
   [{ toolName: "1x" }, /toolName/],
+  [{ herdrBin: "" }, /herdrBin/],
+  [{ herdrBin: "   " }, /herdrBin/],
+  [{ questionLines: 40 }, /questionLines/],
   [{ prompts: { nope: "x" } }, /prompts\.nope/],
   [{ prompts: { guidelines: "Use subagent" } }, /prompts\.guidelines/],
   [{ bridge: { extra: true } }, /bridge\.extra/],

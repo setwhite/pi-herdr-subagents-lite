@@ -16,10 +16,15 @@ function message(role: string, content: unknown[]): string {
   return JSON.stringify({ type: "message", message: { role, content } });
 }
 
+interface ToolCall {
+  name: string;
+  arguments: unknown;
+}
+
 interface SessionCase {
   name: string;
   lines?: string[];
-  expected: { text: string | null; pendingToolCall: boolean };
+  expected: { text: string | null; pendingToolCall: boolean; toolCall?: ToolCall };
 }
 
 const cases: SessionCase[] = [
@@ -68,12 +73,52 @@ const cases: SessionCase[] = [
         { type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} },
       ]),
     ],
-    expected: { text: "Need a decision.", pendingToolCall: true },
+    expected: {
+      text: "Need a decision.",
+      pendingToolCall: true,
+      toolCall: { name: "ask_user_question", arguments: {} },
+    },
   },
   {
     name: "marks a tool-only assistant message as pending",
     lines: [message("assistant", [{ type: "toolCall", id: "call-1", name: "ask_user_question", arguments: {} }])],
-    expected: { text: null, pendingToolCall: true },
+    expected: {
+      text: null,
+      pendingToolCall: true,
+      toolCall: { name: "ask_user_question", arguments: {} },
+    },
+  },
+  {
+    name: "returns the pending tool call arguments",
+    lines: [
+      message("assistant", [
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "ask_user_question",
+          arguments: { questions: [{ question: "Continue?" }] },
+        },
+      ]),
+    ],
+    expected: {
+      text: null,
+      pendingToolCall: true,
+      toolCall: { name: "ask_user_question", arguments: { questions: [{ question: "Continue?" }] } },
+    },
+  },
+  {
+    name: "returns the last tool call of the message",
+    lines: [
+      message("assistant", [
+        { type: "toolCall", id: "call-1", name: "bash", arguments: { command: "ls" } },
+        { type: "toolCall", id: "call-2", name: "edit", arguments: { path: "a.ts" } },
+      ]),
+    ],
+    expected: {
+      text: null,
+      pendingToolCall: true,
+      toolCall: { name: "edit", arguments: { path: "a.ts" } },
+    },
   },
 ];
 

@@ -39,7 +39,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | # | 决策 |
 |---|---|
 | [D9](D9-brief-file.md) | 任务简报写文件，用 `@brief` 投递 |
-| [D10](D10-cwd-from-profile.md) | 子代理 cwd 默认继承父 |
+| [D10](D10-cwd-from-run.md) | 子代理 cwd 来自 run 参数 |
 | [D13](D13-fresh-only.md) | v1 只支持 fresh |
 | [D50](D50-skills.md) | skills 三态 |
 | [D51](D51-system-prompt.md) | system-prompt 三模式 |
@@ -77,7 +77,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | # | 决策 |
 |---|---|
 | [D26](D26-file-inbox.md) | send 走文件 inbox |
-| [D54](D54-question-via-pane-scan.md) | 子代理提问靠父侧扫 pane |
+| [D54](D54-question-from-session.md) | 提问正文来自子 session 尾部 |
 | [D27](D27-no-write-limits.md) | 不做运行时写限制 |
 
 ## 工具与配置

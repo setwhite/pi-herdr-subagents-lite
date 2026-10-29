@@ -72,7 +72,7 @@ herdr --session herdr-e2e tab list
 - 结果投递后 worker tab 仍在（`auto-exit` 默认 false），`agent list` 里仍有 `explore-1`，状态 idle；此时 `send` 直接写 inbox，不重启。
 - 自退变体：profile 加 `auto-exit: true` 重跑本节，done 后 tab 消失、`agent list` 里没有 `explore-1`。
 
-反问验证（如果子环境有 `ask_user_question`）：派一个会提问的短任务；问题出现在子 pane，父会话收到一条 `[subagent NAME] blocked (question)` 和 pane 末尾文本；人在子 pane 回答后，父会话收到 `done`。
+反问验证（如果子环境有 `ask_user_question`）：派一个会提问的短任务；问题出现在子 pane，父会话收到一条 `[subagent NAME] blocked (question)` 和问题与选项文本；人在子 pane 回答后，父会话收到 `done`。
 
 ## 3. 并发上限
 

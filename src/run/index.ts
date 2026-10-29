@@ -12,7 +12,7 @@ import { type RunStarted, start } from "./start.ts";
 import type { RunRecord, RunServiceDeps, RunState } from "./state.ts";
 
 export interface RunService {
-  run(profile: string, task: string): Promise<RunStarted>;
+  run(profile: string, task: string, cwd?: string): Promise<RunStarted>;
   send(name: string, message: string): Promise<SendResult>;
   onResult(handler: ResultHandler): void;
   onQuestion(handler: QuestionHandler): void;
@@ -79,11 +79,11 @@ export function createRunService(deps: RunServiceDeps): RunService {
   state.results = createAggregator<RunResult>({
     windowMs: deps.aggregateWindowMs,
     deliver: (batch) => state.resultHandler?.(batch),
-    onError: deps.onResultError,
+    onError: deps.onDeliveryError,
   });
 
   return {
-    run: (profile, task) => start(state, profile, task),
+    run: (profile, task, cwd) => start(state, profile, task, cwd),
     send: (name, message) => send(state, name, message),
     onResult(handler) {
       state.resultHandler = handler;

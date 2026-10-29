@@ -1,4 +1,4 @@
-import type { ExecHerdr, ExecHerdrText } from "./cli.ts";
+import type { ExecHerdr } from "./cli.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -48,7 +48,7 @@ function agentStartCommand(input: ResumeAgentInput): string[] {
   ];
 }
 
-export function createAgentCommands(exec: ExecHerdr, execText: ExecHerdrText) {
+export function createAgentCommands(exec: ExecHerdr) {
   return {
     async startAgent({ name, briefFile, ...input }: StartAgentInput) {
       await exec(agentStartCommand({ name, ...input }));
@@ -57,10 +57,6 @@ export function createAgentCommands(exec: ExecHerdr, execText: ExecHerdrText) {
 
     async resumeAgent(input: ResumeAgentInput) {
       await exec(agentStartCommand(input));
-    },
-
-    async readAgent(name: string, lines: number): Promise<string> {
-      return execText(["agent", "read", name, "--lines", String(lines), "--format", "text"]);
     },
 
     async listAgents(): Promise<AgentEntry[]> {

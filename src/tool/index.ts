@@ -42,7 +42,7 @@ export function createTool({ config, profiles, service }: ToolDeps) {
       }
       try {
         if (params.action === "run") {
-          return started(await service().run(params.profile, params.task));
+          return started(await service().run(params.profile, params.task, params.cwd));
         }
         return sent(await service().send(params.name, params.message));
       } catch (error) {

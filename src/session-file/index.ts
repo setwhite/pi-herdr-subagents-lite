@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { parseLastAssistant, type SessionSnapshot } from "./jsonl.ts";
+import { parseLastAssistant, type SessionSnapshot, type ToolCall } from "./jsonl.ts";
 
 export {
   type ExitReceipt,
@@ -8,6 +8,7 @@ export {
   readExitReceipt,
   writeExitReceipt,
 } from "./receipt.ts";
+export type { ToolCall };
 
 export type SessionReader = (path: string) => SessionSnapshot;
 

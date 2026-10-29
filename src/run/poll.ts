@@ -6,7 +6,6 @@ import type { RunResult } from "./result.ts";
 import { doneResult, unknownResult } from "./result.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
-const POLL_INTERVAL_MS = 1000;
 const POLL_FAILURE_LIMIT = 3;
 const READ_ATTEMPTS = 3;
 const READ_RETRY_DELAY_MS = 200;
@@ -18,7 +17,7 @@ export function ensurePoll(state: RunState): void {
   if (!state.runs.some((run) => run.live)) {
     return;
   }
-  state.pollTimer = setTimeout(() => void tick(state), POLL_INTERVAL_MS);
+  state.pollTimer = setTimeout(() => void tick(state), state.pollIntervalMs);
   state.pollTimer.unref?.();
 }
 
@@ -68,9 +67,7 @@ async function pollRuns(state: RunState): Promise<void> {
       continue;
     }
     if (agent.status === "blocked") {
-      if (!(await askBlocked(state, run, agent)) && run.pollFailures >= POLL_FAILURE_LIMIT) {
-        await finish(state, run, unknownResult(run, "poll_failed"));
-      }
+      await askBlocked(state, run);
       continue;
     }
     run.blocked = false;

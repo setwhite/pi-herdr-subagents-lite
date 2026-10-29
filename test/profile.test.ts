@@ -88,13 +88,12 @@ it("parses skills as a list", () => {
 
 it("reads the remaining profile fields", () => {
   const profile = profileFrom(
-    'model: opencode-go/x\nthinking: high\ntools: "read,bash"\ncwd: sub\nsystem-prompt: replace\nauto-exit: true\ndisable-model-invocation: true',
+    'model: opencode-go/x\nthinking: high\ntools: "read,bash"\nsystem-prompt: replace\nauto-exit: true\ndisable-model-invocation: true',
   );
 
   expect(profile.model).toBe("opencode-go/x");
   expect(profile.thinking).toBe("high");
   expect(profile.tools).toBe("read,bash");
-  expect(profile.cwd).toBe("sub");
   expect(profile.systemPrompt).toBe("replace");
   expect(profile.autoExit).toBe(true);
   expect(profile.disableModelInvocation).toBe(true);
@@ -107,7 +106,6 @@ it("fills defaults", () => {
   expect(profile.thinking).toBeUndefined();
   expect(profile.tools).toBeUndefined();
   expect(profile.skills).toBeUndefined();
-  expect(profile.cwd).toBeUndefined();
   expect(profile.systemPrompt).toBe("append");
   expect(profile.autoExit).toBe(false);
   expect(profile.disableModelInvocation).toBe(false);

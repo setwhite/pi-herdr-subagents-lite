@@ -10,10 +10,12 @@ export interface RunServiceDeps {
   readLastAssistant: SessionReader;
   readExitReceipt: ExitReceiptReader;
   loadProfiles: () => ProfileCatalog;
+  toolName: string;
   maxConcurrent: number;
   maxResultChars: number;
   aggregateWindowMs: number;
-  onResultError: (error: unknown) => void;
+  pollIntervalMs: number;
+  onDeliveryError: (error: unknown) => void;
 }
 
 export interface RunRecord {
@@ -22,6 +24,7 @@ export interface RunRecord {
   paneId: string;
   paneLabel: string;
   sessionFile: string;
+  cwd: string;
   tabId: string;
   autoExit: boolean;
   lastHandledSeq: number;

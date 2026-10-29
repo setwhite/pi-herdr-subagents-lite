@@ -4,6 +4,7 @@ interface RunParameters {
   action: "run";
   profile: string;
   task: string;
+  cwd?: string;
 }
 
 interface SendParameters {
@@ -24,6 +25,7 @@ export const parameters = Type.Unsafe<SubagentParameters>({
         action: { const: "run" },
         profile: { type: "string" },
         task: { type: "string", minLength: 1 },
+        cwd: { type: "string", minLength: 1 },
       },
       required: ["action", "profile", "task"],
     },

@@ -7,7 +7,7 @@ import { spawnFailed, ToolError } from "./errors.ts";
 import { paneLabel, profileSlug } from "./naming.ts";
 import { ensurePoll } from "./poll.ts";
 import { resolveProfile } from "./resolve.ts";
-import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, profileCwd } from "./spawn-args.ts";
+import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, resolveCwd } from "./spawn-args.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -38,7 +38,7 @@ export async function createPane(state: RunState, run: RunRecord, cwd: string, l
   await state.host.renamePane({ paneId: tab.paneId, label });
 }
 
-export async function start(state: RunState, profileName: string, task: string): Promise<RunStarted> {
+export async function start(state: RunState, profileName: string, task: string, rawCwd?: string): Promise<RunStarted> {
   const profile = resolveProfile(state.loadProfiles(), profileName);
   if (state.active().length >= state.maxConcurrent) {
     const names = state.active().join(", ");
@@ -56,13 +56,14 @@ export async function start(state: RunState, profileName: string, task: string):
   };
   const name = state.nextName(profileName);
   let current = files(name);
-  const cwd = profileCwd(profile);
+  const cwd = resolveCwd(rawCwd);
   const run: RunRecord = {
     name,
     profileName: profile.name,
     paneId: "",
     paneLabel: "",
     sessionFile: current.sessionFile,
+    cwd,
     tabId: "",
     autoExit: profile.autoExit,
     lastHandledSeq: 0,
@@ -92,7 +93,7 @@ export async function start(state: RunState, profileName: string, task: string):
           paneId: run.paneId,
           sessionFile: current.sessionFile,
           briefFile: current.briefFile,
-          agentArgs: agentArgs(profile, current.identityFile),
+          agentArgs: agentArgs(profile, current.identityFile, state.toolName),
         });
         break;
       } catch (error) {

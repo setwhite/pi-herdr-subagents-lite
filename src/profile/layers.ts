@@ -50,7 +50,6 @@ function parseProfile(file: string, source: string): { profile?: Profile; proble
     thinking: enumField(fields, "thinking", THINKING_LEVELS),
     tools: toolsField(fields),
     skills: skillsField(fields),
-    cwd: stringField(fields, "cwd"),
     systemPrompt: enumField(fields, "system-prompt", SYSTEM_PROMPT_MODES) ?? "append",
     autoExit: booleanField(fields, "auto-exit") ?? false,
     disableModelInvocation: booleanField(fields, "disable-model-invocation") ?? false,

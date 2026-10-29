@@ -11,7 +11,7 @@ import { watchAutoExit } from "./auto-exit.ts";
 import { type ShutdownHandler, watchShutdown } from "./shutdown.ts";
 
 export interface ExtensionDeps {
-  host: HerdrHost;
+  createHost: (config: Config) => HerdrHost;
   readLastAssistant: SessionReader;
   readExitReceipt: ExitReceiptReader;
   writeExitReceipt: ExitReceiptWriter;
@@ -54,6 +54,7 @@ const INBOX_FAILURE_LIMIT = 3;
 export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) => void {
   return (pi: ExtensionRegistrar) => {
     const config = deps.loadConfig();
+    const host = deps.createHost(config);
     let service: RunService | undefined;
     let stopPump: (() => void) | undefined;
     let inboxFailures = 0;
@@ -107,14 +108,16 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
     const startService = (sources: ProfileSources, ctx: SessionContext) => {
       service?.shutdown();
       service = createRunService({
-        host: deps.host,
+        host,
         readLastAssistant: deps.readLastAssistant,
         readExitReceipt: deps.readExitReceipt,
         loadProfiles: () => deps.loadProfiles(sources),
         maxConcurrent: config.maxConcurrent,
         maxResultChars: config.maxResultChars,
         aggregateWindowMs: config.aggregateWindowMs,
-        onResultError: (error) => ctx.ui.notify(`result delivery failed: ${errorText(error)}`, "error"),
+        pollIntervalMs: config.pollIntervalMs,
+        toolName: config.toolName,
+        onDeliveryError: (error) => ctx.ui.notify(`delivery failed: ${errorText(error)}`, "error"),
       });
       service.onResult((results) => sendResults(pi, results));
       service.onQuestion((question) => sendQuestion(pi, question));

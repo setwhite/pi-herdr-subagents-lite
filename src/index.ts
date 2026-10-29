@@ -6,7 +6,7 @@ import { agentDir, loadProfiles } from "./profile/index.ts";
 import { readExitReceipt, readLastAssistant, writeExitReceipt } from "./session-file/index.ts";
 
 const extension: ExtensionFactory = createExtension({
-  host: createHerdrHost(),
+  createHost: (config) => createHerdrHost(config.herdrBin),
   readLastAssistant,
   readExitReceipt,
   loadConfig: () => loadConfig(agentDir()),

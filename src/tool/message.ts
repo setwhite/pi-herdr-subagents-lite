@@ -25,7 +25,8 @@ const QUESTION_FOOTER = [
 ].join("\n");
 
 export function sendQuestion(sink: MessageSink, question: RunQuestion): void {
-  const content = `[subagent ${question.name}] blocked (question)\n\n${question.text.trim()}\n\n${QUESTION_FOOTER}`;
+  const body = question.text.trim() === "" ? "" : `\n\n${question.text.trim()}`;
+  const content = `[subagent ${question.name}] blocked (question)${body}\n\n${QUESTION_FOOTER}`;
   sink.sendMessage({ customType: "subagent_question", content, display: true }, { triggerTurn: true });
 }
 

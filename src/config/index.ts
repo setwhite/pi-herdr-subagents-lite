@@ -8,6 +8,7 @@ import {
   enumList,
   integer,
   isRaw,
+  nonEmptyString,
   object,
   optionalString,
   PROMPT_KEYS,
@@ -33,11 +34,13 @@ interface PromptOverrides {
 export interface Config {
   enabled: boolean;
   toolName: string;
+  herdrBin: string;
   maxConcurrent: number;
   maxResultChars: number;
   aggregateWindowMs: number;
   closeChildrenOn: ShutdownReason[];
   inboxPollMs: number;
+  pollIntervalMs: number;
   prompts: PromptOverrides;
   bridge: { enabled: boolean; blockedOn: BlockedKind[] };
 }
@@ -67,11 +70,13 @@ function parse(raw: Raw, file: string): Config {
   const config: Config = {
     enabled: boolean(top, "enabled", true),
     toolName: toolName(top),
+    herdrBin: nonEmptyString(top, "herdrBin", "herdr"),
     maxConcurrent: integer(top, "maxConcurrent", 16, 1, Number.POSITIVE_INFINITY),
     maxResultChars: integer(top, "maxResultChars", 16384, 1024, 1048576),
     aggregateWindowMs: integer(top, "aggregateWindowMs", 500, 0, 10000),
     closeChildrenOn: enumList(top, "closeChildrenOn", SHUTDOWN_REASONS, []),
     inboxPollMs: integer(top, "inboxPollMs", 250, 50, 5000),
+    pollIntervalMs: integer(top, "pollIntervalMs", 1000, 100, 60000),
     prompts: promptOverrides(top),
     bridge: {
       enabled: boolean(bridge, "enabled", true),
