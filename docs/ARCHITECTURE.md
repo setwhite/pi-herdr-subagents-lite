@@ -4,8 +4,6 @@
 
 本文只写模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则；内部 API 以代码与类型为准。v1 对外契约见 [v1 契约](specs/0001-v1-contract.md)，理由见 [决策](decisions/README.md)，任务与进度见 [任务台账](todos/README.md)。
 
-**迁移状态**：第 2、3 节的表是目标结构；第 2 节「迁移」列是每个模块的落地任务，未标任务的已就位。迁移完成前，`scripts/check-imports.mjs` 的 `EDGES` 是实际的依赖边。
-
 ## 1. 命名与拆分规则
 
 - 模块名是职责的普通名词，小写、单数：`config`、`profile`、`inbox`、`bridge`、`run`。禁用看不出职责的词：`utils`、`common`、`helpers`、`core`、`ports`、`service`、`manager`。
@@ -16,18 +14,18 @@
 
 ## 2. 模块
 
-| 模块 | 职责 | 对外 | 文件 | 迁移 |
-|---|---|---|---|---|
-| `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — | 同 |
-| [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` `shutdown.ts`（T30） | 同，瘦身 |
-| [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResults`、`sendQuestion`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` | 从 `extension` 拆（T20） |
-| [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、提问、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`QuestionHandler`、`RunQuestion`、`CloseChildrenResult`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts`（T19）、`close.ts`（T22）、`find.ts`（T26）、`question.ts`（T27）；`aggregate.ts`（T30）、`artifact.ts`（T31） | 原 `subagent`（T19） |
-| [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput` | `index.ts` `cli.ts` `agent.ts` `pane.ts` | 同，拆文件（T21） |
-| [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` | 原 `session`（T21） |
-| [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` | 同，泵从 `extension` 迁入（T21） |
-| [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`BlockedKind`、`ShutdownReason`、`isRaw`、`Raw` | `index.ts` `schema.ts` | 同，拆文件（T21） |
-| [`profile`](modules/profile.md) | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` | 同，拆文件（T21） |
-| [`bridge`](modules/bridge.md) | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` | 从 `extension` 拆（T28） |
+| 模块 | 职责 | 对外 | 文件 |
+|---|---|---|---|
+| `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — |
+| [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` `shutdown.ts` |
+| [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果与提问消息信封 | `createTool`、`SubagentTool`、`sendResults`、`sendQuestion`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` |
+| [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、提问、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`QuestionHandler`、`RunQuestion`、`CloseChildrenResult`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `poll.ts` `result.ts` `send.ts` `state.ts` `errors.ts` `close.ts` `find.ts` `question.ts` `aggregate.ts` `artifact.ts` |
+| [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput`、`CloseTabResult` | `index.ts` `cli.ts` `agent.ts` `pane.ts` |
+| [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` |
+| [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` |
+| [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`BlockedKind`、`ShutdownReason`、`isRaw`、`Raw` | `index.ts` `schema.ts` |
+| [`profile`](modules/profile.md) | profile 读取、校验、分层 | `loadProfiles`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources` | `index.ts` `frontmatter.ts` `layers.ts` |
+| [`bridge`](modules/bridge.md) | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` |
 
 入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
 
@@ -109,7 +107,3 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 - 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata`（D33）。
 - 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
 - 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只从全局复制真实 `auth.json`，另写最小 `settings.json`、`keybindings.json`、`config.json` 与 `profiles/explore.md`（D53）。
-
-## 8. 未实现
-
-行为差与任务号只在 [任务台账](todos/README.md)；本文不重复。任务状态只在 `docs/todos/`。

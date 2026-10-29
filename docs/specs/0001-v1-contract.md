@@ -1,7 +1,7 @@
 
 # v1 契约
 
-v1 对外配置、工具、结果与 bridge。本文是实现目标，不是当前代码；当前实现范围见 [任务台账](../todos/README.md)。决策理由见 [决策](../decisions/README.md)，工具文案见 `src/tool/text.ts`。
+v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理由见 [决策](../decisions/README.md)，工具文案见 `src/tool/text.ts`。
 
 一句话：一个工具，两个 action（`run` / `send`）；结果异步；子代理跑在 herdr pane；fresh only。
 
