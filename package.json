@@ -1,8 +1,16 @@
 {
   "name": "pi-herdr-subagents-lite",
   "version": "0.1.0",
-  "private": true,
+  "description": "Run pi subagents in herdr panes.",
   "type": "module",
+  "license": "MIT",
+  "author": "setwhite",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/setwhite/pi-herdr-subagents-lite.git"
+  },
+  "keywords": ["pi-package", "pi-extension", "herdr", "subagent"],
+  "files": ["src"],
   "packageManager": "pnpm@12.3.4",
   "engines": {
     "node": ">=22.19.0"

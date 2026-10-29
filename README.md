@@ -1,17 +1,15 @@
 
 # pi-herdr-subagents-lite
 
-在 herdr pane 里运行 pi 子代理的扩展。当前代码支持 `run`、`send`、全局与项目 profile；其余 v1 行为见 [任务台账](docs/todos/README.md)，契约见 [v1 契约](docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
+在 herdr pane 里运行 pi 子代理的扩展。当前代码支持 `run`、`send`、全局与项目 profile；其余 v1 行为见 [任务台账](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/todos/README.md)，契约见 [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md)。公开 npm 包（发布后）；experimental，不承诺版本兼容。
 
 ## 安装
-
-发布后：
 
 ~~~bash
 pi install npm:pi-herdr-subagents-lite
 ~~~
 
-全局安装加载一个扩展，同时提供 `subagent` 工具与 bridge；bridge 要在子进程里生效，必须全局安装。npm 发布在 M6（见 [任务台账](docs/todos/README.md)）；当前 `package.json` 仍是 `private: true`。
+`pi install` 默认写个人 settings（`<agent-dir>/settings.json`），对所有项目生效。不要加 `-l`：必须全局安装，子进程才加载本包，bridge 与 inbox 泵才在子代理里生效。
 
 开发时直接加载源码：
 
@@ -29,7 +27,7 @@ pi -e ./src/index.ts
 
 返回 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
 
-全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`；键、默认值与校验见 [v1 契约](docs/specs/0001-v1-contract.md) 第 1 节。
+全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`；键、默认值与校验见 [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) 第 1 节。
 
 ## 开发
 
@@ -39,17 +37,18 @@ pnpm check                            # lint + check:imports + typecheck + test
 git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 ~~~
 
-真实 herdr 的手工 E2E 见 [e2e/herdr.md](docs/e2e/herdr.md)。
+真实 herdr 的手工 E2E 见 [e2e/herdr.md](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/e2e/herdr.md)。
 
 ## 文档
 
-- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块文档索引。
-- [v1 契约](docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
-- [决策](docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
-- [GLOSSARY](docs/GLOSSARY.md) — 术语。
-- [herdr E2E](docs/e2e/herdr.md) — 当前的手工回归 runbook。
-- [任务台账](docs/todos/README.md) — v1 里程碑。
-- [参考实现](docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
-- [herdr 恢复与状态实测](docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
-- [herdr agent list 实测](docs/research/herdr-agent-list.md) — `agent list` 原文与字段结论。
-- [herdr workspace create 实测](docs/research/herdr-workspace-create.md) — `workspace create` / `tab create --workspace` 的字段与初始 tab。
+- [ARCHITECTURE](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块文档索引。
+- [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
+- [决策](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/decisions/README.md) — 决策与理由、取消项、边界与验证。
+- [GLOSSARY](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/GLOSSARY.md) — 术语。
+- [herdr E2E](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/e2e/herdr.md) — 当前的手工回归 runbook。
+- [任务台账](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/todos/README.md) — v1 里程碑。
+- [参考实现](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
+- [herdr 恢复与状态实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
+- [herdr agent list 实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-agent-list.md) — `agent list` 原文与字段结论。
+- [herdr workspace create 实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-workspace-create.md) — `workspace create` / `tab create --workspace` 的字段与初始 tab。
+- [pi install 与 pack 产物实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/pi-install-pack.md) — tarball 不是 pi 包源；本地验证用 npm 布局。
