@@ -1,8 +1,8 @@
 # D54 子代理提问靠父侧扫 pane
 
-不加子侧工具。父侧在 `agent_status = blocked` 时读一次 `herdr agent read <name> --lines 40 --format text`，把末尾纯文本发成 `subagent_question`；同一个 blocked 只发一次，离开 blocked 后重置。
+不自造通道：子代理用自己的 `ask_user_question`，pane 是满保真 TUI。不加子侧工具。父侧在 `agent_status = blocked` 时读一次 pane 末尾，把纯文本发成 `subagent_question`（去重见契约 §6）。
 
-回答由人在子 pane 里给，父模型只收到问题。依据：用户选择不做工具、不做程序化答题；复用已有的 1s 快照，不引入 `<session>.ask/` 文件协议。代价：原生 ask 弹窗只能由人在子 pane 里回答，父侧 `send` 排队到对话框关闭。
+回答由人在子 pane 里给，父模型只收到问题。依据：用户选择不做工具、不做程序化答题；复用已有的 `agent list` 快照，不引入 `<session>.ask/` 文件协议。代价：原生 ask 弹窗只能由人在子 pane 里回答，父侧 `send` 排队到对话框关闭。
 
 取消项：子侧 `ask_question` 工具、`<session>.ask/` 目录（参考实现 fyang93 的通道）。
 

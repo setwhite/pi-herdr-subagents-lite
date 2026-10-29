@@ -28,8 +28,7 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D22](D22-tab-placement.md) | 新 tab 或新 workspace |
 | [D23](D23-start-then-prompt.md) | 先等 idle，再投 brief |
-| [D28](D28-close-on-done.md) | 关闭由 auto-exit 与 closeChildrenOn 决定 |
-| [D47](D47-close-on-done-default-keep.md) | 完成默认保留 tab |
+| [D47](D47-close-on-done-default-keep.md) | 完成默认保留 tab；关闭由 auto-exit 与 closeChildrenOn 决定 |
 | [D48](D48-close-children-on.md) | 父会话结束按 closeChildrenOn 清理 |
 | [D32](D32-death-detection.md) | died 判定以 agent list 消失为准 |
 | [D53](D53-session-dir.md) | 子 session 放在 agent dir |
@@ -70,8 +69,6 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 |---|---|
 | [D24](D24-state-source.md) | 状态只读 herdr |
 | [D25](D25-native-alerts.md) | 提醒走原生 |
-| [D29b](D29b-event-subscription.md) | 父侧事件订阅只服务投递（v1 不订阅） |
-| [D19](D19-ask-in-pane.md) | 反问留在子 pane |
 | [D40](D40-bridge.md) | bridge 上报 blocked |
 | [D49](D49-merge-bridge.md) | bridge 并入主扩展 |
 
@@ -94,11 +91,3 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | [D45](D45-tool-name.md) | 默认工具名 subagent，重名不处理 |
 | [D46](D46-no-role-detection.md) | 角色只看 inbox 目录 |
 
-## 边界与验证
-
-| # | 问题 |
-|---|---|
-| [V2](V2-send-blocked.md) | `send` 到 blocked 子代理 |
-| [V4](V4-session-flush.md) | agent list 报告 done 时子 session 是否已落盘 |
-| [V6](V6-artifact-cleanup.md) | 结果 artifact 清理 |
-| [V7](V7-pending-ask.md) | herdr server 重启时 pending ask 对话框是否重绘 |

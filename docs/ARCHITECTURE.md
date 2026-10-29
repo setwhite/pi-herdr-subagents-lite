@@ -2,7 +2,7 @@
 
 最小 package：package 根就是仓库工作目录，`src/` 放模块、`test/` 放测试、`docs/` 放文档。只做 herdr，按职责分模块，不按 controller/service/adapter 分层。
 
-本文只写模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则；内部 API 以代码与类型为准。v1 对外契约见 [v1 契约](specs/0001-v1-contract.md)，理由见 [决策](decisions/README.md)，任务与进度见 [任务台账](todos/README.md)。
+本文只写模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则；内部 API 以代码与类型为准。v1 对外契约见 [v1 契约](specs/0001-v1-contract.md)，理由见 [决策](decisions/README.md)。
 
 ## 1. 命名与拆分规则
 
@@ -89,21 +89,17 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 |---|---|---|
 | `README.md` | 安装、用法、开发、文档索引 | 模块签名、选型理由 |
 | `docs/ARCHITECTURE.md` | 模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则、模块文档索引 | 字段表、决策理由、进度、模块用法 |
-| `docs/decisions/*.md` | 决策编号、理由、取消项、边界与验证；一条一份 | 字段表、配置/命令行 |
+| `docs/decisions/*.md` | 决策编号、理由、取消项、边界；一条一份 | 字段表、配置/命令行 |
 | `docs/specs/*.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
 | `docs/GLOSSARY.md` | 本扩展特有术语的唯一命名来源 | 实现细节 |
 | `docs/modules/*.md` | 单个模块的用法与取舍 | 依赖方向、契约字段表 |
 | `docs/e2e/herdr.md` | 当前手工 E2E runbook | 契约与理由 |
-| `docs/todos/*.md` | 任务台账、验收证据 | 契约与理由 |
-| `docs/audit/*.md` | 任务验收结论与证据 | 契约与理由 |
 | `docs/research/*.md` | 外部实测与参考记录 | 当前契约 |
 
 内容归属冲突时以本表裁决；跨文档只允许指针，不允许复述。
 
 ## 7. 约束
 
-- 不写自建 registry；子 session、brief、inbox 都只是文件，不承担恢复（D38）。
-- 不靠 marker 或角色检测；子进程也加载本包，角色只看 `inbox` 目录（D46）。
-- 不设 `title` / `display_agent` / `state_labels`；不使用 `pane.report_metadata`（D33）。
-- 收工 QA 固定四条：`pnpm lint`、`pnpm check:imports`、`pnpm typecheck`、`pnpm test`；`pnpm check` 一次跑完。
-- 手动验收用隔离 agent 目录：`PI_CODING_AGENT_DIR=<临时目录>`，只从全局复制真实 `auth.json`，另写最小 `settings.json`、`keybindings.json`、`config.json` 与 `profiles/explore.md`（D53）。
+- 不建自建 registry、不做角色检测、不设展示字段：见 D38、D46、D33。
+- 收工 QA：`pnpm check`，组成见 `package.json`。
+- 手动验收用隔离 agent 目录（D53），步骤见 [e2e/herdr.md](e2e/herdr.md)。

@@ -19,32 +19,29 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 |---|---|---|---|
 | `enabled` | boolean | — | 只控制工具注册；bridge 由 `bridge.enabled` 独立控制；已跑子代理不受影响 |
 | `toolName` | string | `^[a-z][a-z0-9_]{0,31}$` | 默认 `subagent`；跨扩展重名不处理 |
+| `herdrBin` | string | 非空 | herdr 可执行文件；默认 `herdr`，按 PATH 解析；用绝对路径可指定版本 |
 | `maxConcurrent` | integer | 越界 clamp | 每个父会话的 live 子代理上限；只有下界，无上限；`auto-exit: false` 的 done 子代理仍算 live |
 | `maxResultChars` | integer | 越界 clamp | 字符数；超过则全文落 artifact |
 | `aggregateWindowMs` | integer | 越界 clamp | 0 = 不聚合，逐个回投 |
 | `closeChildrenOn` | string[] | `new` / `resume` / `fork` / `quit` / `reload` | 空 = 不关；命中 `session_shutdown.reason` 时关该父会话的子 tab |
 | `inboxPollMs` | integer | 越界 clamp | 子侧 inbox 轮询间隔 |
+| `pollIntervalMs` | integer | 越界 clamp | 父侧 `agent list` 轮询间隔 |
+| `questionLines` | integer | 越界 clamp | blocked 时读 pane 的行数 |
 | `prompts` | object | — | 提示词覆盖；键与展开见 `src/tool/text.ts` |
 | `bridge` | object | — | 见第 7 节 |
 
-完成后的关闭由 profile 的 `auto-exit` 决定，见第 2 节；没有全局开关。保留的 done 子代理仍占一个槽；要释放就设 `auto-exit: true` 或人工关 tab。
+`closeChildrenOn` 未命中时只停止投递，不关 tab。关 tab 前标记为 expected，不发死亡通知；tab 有多个 pane 时不关，保留并通知。父进程崩溃没有 shutdown，不关、不认领。
 
-`closeChildrenOn` 只在 `session_shutdown` 的 reason 命中时生效：关闭该父会话拥有的子 tab，子进程随之结束；未命中只停止投递，不关 tab。关 tab 前标记为 expected，不发死亡通知。tab 有多个 pane 时不关，保留并通知。父进程崩溃没有 shutdown，不关、不认领。
-
-固定文件与命令：
+固定文件：
 
 | 项 | 值 |
 |---|---|
-| 子 session | `<agent-dir>/pi-herdr-subagents-lite/sessions/<name>-<runId>.jsonl`；`runId` 每个 run 唯一，不复用 |
+| 子 session | `<agent-dir>/pi-herdr-subagents-lite/sessions/<name>-<runId>.jsonl`；`runId` 每个 run 唯一 |
 | 任务简报 | `<childSession>.brief.md` |
-| 身份文件 | `<childSession>.identity.md`；profile body，`--append-system-prompt` / `--system-prompt` 用；续聊沿用同一文件 |
-| 子侧 inbox | `<childSession>.inbox/`；父进程在 `agent start` 前创建；处理完 rename 到 `.delivered/` |
+| 身份文件 | `<childSession>.identity.md`；存 profile body |
+| 子侧 inbox | `<childSession>.inbox/`；处理完归档到 `.delivered/` |
 | 结果 artifact | `<childSession>.result-<seq>.md` |
-| 子进程命令 | PATH 里的 `pi`，基础参数 `--session <childSession>`；其余由 profile 生成 |
-| blocked 通知 | `notification show --sound request`（仅 blocked） |
-| blocked 事件源 | pi `ui_prompt_start` / `ui_prompt_end` |
-| 退出回执 | `<childSession>.exit`；子进程 `session_shutdown` 时写 `{reason}`；只有 `<childSession>.inbox/` 存在时才写 |
-| 问题观察 | 父侧在 blocked 时读 `herdr agent read <name> --lines 40 --format text` |
+| 退出回执 | `<childSession>.exit`；只在 `<childSession>.inbox/` 存在时写 |
 
 ## 2. Profile
 
@@ -59,7 +56,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `model` | string | 继承父 | provider/model 或 pi 支持的 pattern |
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
 | `tools` | string | pi 默认 | 纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
-| `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = `--no-skills`，不加载 skill；非空列表 = `--no-skills` + 每项解析为 `<agent-dir>/skills/<name>` 并用 `--skill` 传入，只加载指定项；列表项是名字，不带 `+` / `-` |
+| `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项（`<agent-dir>/skills/<name>`）；列表项是名字，不带 `+` / `-` |
 | `cwd` | string | 继承父 cwd | 相对路径按父 cwd 解析；子进程在此目录启动；与父 cwd 不同时在新 workspace 里开 tab，相同则在同 workspace 开新 tab |
 | `system-prompt` | string | append | append / replace / task；省略 = append，见 [D51](../decisions/D51-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
@@ -68,7 +65,6 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 - `ask_user_question` 不自动加入；想反问就写进 `tools`。
 - `subagent` 不特殊处理；不管理嵌套深度，不强制拦截；不想嵌套就在 `tools` 里不写它，或在提示词里禁止。
 - 未知字段忽略；解析失败只跳过该 profile，并在工具错误里说明。
-- 不做 `session-mode` / `writeScope` / `denyWrites`。
 
 ## 3. 工具
 
@@ -80,7 +76,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | label | `Subagent` |
 | description / snippet / guidelines | 见 `src/tool/text.ts`；profile 列表在注册时展开 |
 
-参数：
+参数（schema 以 `src/tool/schema.ts` 为准）：
 
 | 字段 | 用于 | 必填 | 类型 | 说明 |
 |---|---|---|---|---|
@@ -90,38 +86,10 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `name` | send | 是 | string | run 返回的子代理名 |
 | `message` | send | 是 | string | 新消息 |
 
-~~~json
-{
-  "type": "object",
-  "oneOf": [
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": { "const": "run" },
-        "profile": { "type": "string" },
-        "task": { "type": "string", "minLength": 1 }
-      },
-      "required": ["action", "profile", "task"]
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "action": { "const": "send" },
-        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
-        "message": { "type": "string", "minLength": 1 }
-      },
-      "required": ["action", "name", "message"]
-    }
-  ]
-}
-~~~
-
 返回：
 
 ~~~json
-{"state":"running","name":"explore-1","paneId":"w1:p4"}
+{"state":"running","name":"explore-1","paneId":"w1:p4","sessionFile":"<childSession>"}
 {"state":"sent","name":"explore-1"}
 {"state":"restarted","name":"explore-1","paneId":"w1:p4"}
 ~~~
@@ -136,15 +104,13 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `max_concurrent` | live 子代理已达 maxConcurrent | 当前 live 名称；等结果或关一个 |
 | `profile_invalid` | profile 字段解析失败 | 文件 + 字段 + 原因 |
 | `spawn_failed` | tab / pane / agent start 失败；含未就绪与 trust 对话框拦住 | 底层错误；已创建的 pane id 保留；未就绪时附「去 pane 处理对话框」 |
-| `name_exhausted` | 自动命名重试 100 次仍冲突 | 当前 live 名称；关一个再试 |
+| `name_exhausted` | 自动命名重试用尽仍冲突 | 当前 live 名称；关一个再试 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |
 | `session_missing` | send 的 run 记录存在，但子 session 文件不存在 | 用 run 新建 |
 
 结果 artifact 写失败不是工具错误：不返回 `isError`，结果消息保留截断头部并附警告。
 
 - 只覆盖 `guidelines` 且没写 `{{profiles}}` 时，模型看不到 profile 列表；`snippet: ""` 的实际效果是从 Available tools 隐藏。
-
-配置错误不是工具错误：不注册工具；pi 显示 extension error；不中止启动。
 
 例子：
 
@@ -155,8 +121,8 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 ## 4. 命名与展示
 
-- `name = <profile>-<n>`。profile slug：小写，非 `[a-z0-9_-]` → `-`，折叠连续 `-`，去首尾，截 16 字符；空则 `worker`；首字符不是字母则加 `agent-` 前缀。
-- `n` 从 1 开始，按 profile 递增；`agent_name_taken` 时 +1 重试，最多 100 次，仍失败 `name_exhausted`。
+- `name = <profile>-<n>`；slug 由 profile 名派生，规则见 `src/run/naming.ts`。
+- `n` 从 1 开始，按 profile 递增；`agent_name_taken` 时 +1 重试，用尽后 `name_exhausted`（上限见 `src/run/naming.ts`）。
 - tab 标签 = `name`。
 - 侧边栏显示 herdr 的 agent name；**不设 `display_agent`**。
 - pane 标签 = 任务第一行；去掉 markdown 前缀、折叠空白、去控制字符、截 32 字。
@@ -181,7 +147,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 ## 6. 结果消息
 
-完成检测：父侧每 1s 调一次 `herdr agent list`；按 run 的 `pane_id` 定位、`name` 兜底，`completion_seq` 大于该 run 的 `lastHandledSeq` 且状态为 `idle` / `done` 时读子 session 尾部，投递后把 `lastHandledSeq` 更新为该值。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。不订阅 herdr 事件。
+完成检测按 `completion_seq` 与本 run 的 `lastHandledSeq` 去重，每个 run 最多投递一条结果消息。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。机制见 [D52](../decisions/D52-completion-snapshot.md)。
 
 异步结果是一条 `subagent_result` 自定义消息；父模型看到的是文本，不是工具结果：
 
@@ -195,6 +161,7 @@ Full result: <childSession>.result-3.md
 
 - 只有超过 `maxResultChars` 才写 artifact，并带 `Full result:` 行；未超限时消息不带路径。
 - artifact 的 `seq` 按 run 内已写成的 artifact 递增，重启后继续，不重置。
+- artifact 不清理；v1 没有过期或回收。
 - 聚合时一条消息里放多个块：
 
 ~~~text
@@ -228,7 +195,7 @@ Session: <childSession>
 ~~~text
 [subagent explore-1] blocked (question)
 
-<child pane 末尾 40 行纯文本>
+<child pane 末尾 questionLines 行纯文本>
 
 The human answers it in the child's pane. A follow-up sent with send is
 queued until the dialog closes.
@@ -241,7 +208,7 @@ queued until the dialog closes.
 
 同一扩展内的监听器，不单独入口；全局安装后所有 pi 进程都加载。
 
-- 不单独注册工具；顶层 `enabled: false` 只跳过工具，bridge 仍按 `bridge.enabled` 工作。
+- 不单独注册工具；顶层 `enabled` 只跳过工具（见第 1 节）。
 - 监听 `ui_prompt_start` / `ui_prompt_end`，emit `herdr:blocked`（`{active, label}`）。
 - `blockedOn` 决定哪些 `ui_prompt` kind 算 blocked；默认 `custom` / `select` / `confirm` / `input` / `editor`。
 - `bridge.enabled: false` 或 `blockedOn: []` = 不上报。

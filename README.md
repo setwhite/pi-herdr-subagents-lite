@@ -25,9 +25,9 @@ pi -e ./src/index.ts
 {"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}
 ~~~
 
-返回 `{"state":"running","name":"explore-1","paneId":"...","sessionFile":"..."}`。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。不在 herdr 里调用返回 `not_in_herdr`。
+返回 `{"state":"running",...}`，字段见契约 §3。子代理在独立 tab 里跑；结果稍后以 `[subagent explore-1] done` 消息回到父会话，不要在同一个回合里等。
 
-全局配置在 `<agent-dir>/pi-herdr-subagents-lite/config.json`；键、默认值与校验见 [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) 第 1 节。
+全局配置的键、默认值与校验见 [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) 第 1 节。
 
 ## 开发
 

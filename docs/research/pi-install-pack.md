@@ -1,6 +1,6 @@
 # pi install 与 pack 产物实测
 
-研究记录；契约见 [v1 契约](../specs/0001-v1-contract.md)，任务见 [T33](../todos/T33.md)。
+研究记录；契约见 [v1 契约](../specs/0001-v1-contract.md)。
 
 日期 2026-10-29。环境：pi 1.4.0，Windows + git-bash。每次用新的隔离 `PI_CODING_AGENT_DIR`，只复制真实 `auth.json`；包用 `pnpm pack` 打出的 `pi-herdr-subagents-lite-0.1.0.tgz`。
 

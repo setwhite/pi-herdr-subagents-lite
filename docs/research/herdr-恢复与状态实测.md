@@ -77,4 +77,4 @@ herdr --session u16test agent explain tester --json
 
 ## 未决
 
-未决项见 [决策](../decisions/README.md) 的「边界与验证」。
+- herdr server 重启时 pending ask 对话框是否重绘：未实测；父侧不重放（D38），需要时人工处理。
