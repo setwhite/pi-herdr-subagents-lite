@@ -1,7 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { dataDir, isRaw } from "../config/index.ts";
+import { EXAMPLE_PROFILE, EXAMPLE_PROFILE_FILE } from "./examples.ts";
 import {
   booleanField,
   enumField,
@@ -89,8 +90,22 @@ function readProfilesDir(dir: string): ProfileCatalog {
   return { profiles, problems };
 }
 
+export function globalProfilesDir(): string {
+  return join(dataDir(getAgentDir()), "profiles");
+}
+
+export function seedExampleProfile(profilesDir: string): void {
+  const dir = join(profilesDir, "examples");
+  const file = join(dir, EXAMPLE_PROFILE_FILE);
+  if (existsSync(file)) {
+    return;
+  }
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(file, EXAMPLE_PROFILE);
+}
+
 export function loadProfiles({ cwd, trusted }: ProfileSources): ProfileCatalog {
-  const global = readProfilesDir(join(dataDir(getAgentDir()), "profiles"));
+  const global = readProfilesDir(globalProfilesDir());
   if (!trusted) {
     return global;
   }

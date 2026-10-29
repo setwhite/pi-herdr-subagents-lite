@@ -106,6 +106,17 @@ You are a read-only explorer. Answer with file paths and line numbers.
 
 字段含义与默认值见[契约第 2 节](docs/specs/0001-v1-contract.md#2-profile)。解析失败的 profile 不进列表；`run` 一个坏 profile 会报 `profile_invalid`，含文件、字段与原因。
 
+### 自带示例
+
+安装后扩展写一份示例到 `<agent-dir>/pi-herdr-subagents-lite/profiles/examples/domain.md`：只在文件缺失时写，你的改动不会被覆盖。加载只看 `profiles/*.md`，所以示例默认不生效；复制一层就能用：
+
+```bash
+cd ~/.pi/agent/pi-herdr-subagents-lite/profiles
+cp examples/domain.md domain.md
+```
+
+`domain` 是通用的领域 worker：`disable-model-invocation: true` 让它不出现在工具 guidelines 里，只有你点名才用；`auto-exit: true` 让它干完关 tab。用法是把另一个领域的活连同上下文交给它，让子代理用新上下文接着做。
+
 ## 配置
 
 路径：`<agent-dir>/pi-herdr-subagents-lite/config.json`。`<agent-dir>` 默认 `~/.pi/agent`，可用 `PI_CODING_AGENT_DIR` 重定位。只有全局一份，不读项目配置。

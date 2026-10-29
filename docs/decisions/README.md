@@ -90,4 +90,5 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | [0042](0042-profile-layers.md) | profile 全局 + 项目 |
 | [0045](0045-tool-name.md) | 默认工具名 subagent，重名不处理 |
 | [0046](0046-no-role-detection.md) | 角色只看 inbox 目录 |
+| [0057](0057-example-profile.md) | 自带 domain 示例 profile |
 

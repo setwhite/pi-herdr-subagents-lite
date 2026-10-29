@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { loadProfiles, type Profile } from "../src/profile/index.ts";
+import { EXAMPLE_PROFILE, loadProfiles, type Profile, seedExampleProfile } from "../src/profile/index.ts";
 
 let agentDir = "";
 let projectDir = "";
@@ -210,6 +210,34 @@ it("lets a project profile replace a broken global one", () => {
   writeProjectProfile("worker.md", "---\nthinking: high\n---\n\nProject body.\n");
 
   expect(catalog({ trusted: true })).toMatchObject({ profiles: [{ name: "worker", thinking: "high" }], problems: [] });
+});
+
+it("writes the example profile only when it is missing", () => {
+  seedExampleProfile(profilesDir());
+  const file = join(profilesDir(), "examples", "domain.md");
+
+  expect(readFileSync(file, "utf8")).toBe(EXAMPLE_PROFILE);
+
+  writeFileSync(file, "edited\n");
+  seedExampleProfile(profilesDir());
+
+  expect(readFileSync(file, "utf8")).toBe("edited\n");
+});
+
+it("keeps examples out of the loaded profiles", () => {
+  seedExampleProfile(profilesDir());
+
+  expect(catalog()).toEqual({ profiles: [], problems: [] });
+});
+
+it("loads the example once it is copied a level up", () => {
+  seedExampleProfile(profilesDir());
+  copyFileSync(join(profilesDir(), "examples", "domain.md"), join(profilesDir(), "domain.md"));
+
+  expect(catalog()).toEqual({
+    profiles: [expect.objectContaining({ name: "domain", autoExit: true, disableModelInvocation: true })],
+    problems: [],
+  });
 });
 
 it("lists profiles by file name", () => {

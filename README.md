@@ -106,6 +106,17 @@ You are a read-only explorer. Answer with file paths and line numbers.
 
 Field meanings and defaults: [contract section 2](docs/specs/0001-v1-contract.md#2-profile). A profile that fails to parse stays out of the list; `run` on a broken profile returns `profile_invalid` with the file, field, and reason.
 
+### Bundled example
+
+On install the extension writes one example to `<agent-dir>/pi-herdr-subagents-lite/profiles/examples/domain.md`. It writes only when the file is missing, so your edits are never overwritten. Loading reads `profiles/*.md` only, so the example stays inert until you copy it one level up:
+
+```bash
+cd ~/.pi/agent/pi-herdr-subagents-lite/profiles
+cp examples/domain.md domain.md
+```
+
+`domain` is a general domain worker: `disable-model-invocation: true` keeps it out of the tool guidelines, so only an explicit run uses it; `auto-exit: true` closes its tab when the work is done. Use it to hand work in another domain to a subagent that starts with a fresh context.
+
 ## Configuration
 
 Path: `<agent-dir>/pi-herdr-subagents-lite/config.json`. `<agent-dir>` defaults to `~/.pi/agent` and can be moved with `PI_CODING_AGENT_DIR`. There is exactly one global config; project config is not read.
