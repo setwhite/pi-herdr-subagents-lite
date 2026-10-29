@@ -197,28 +197,21 @@ cp examples/domain.md domain.md
 
 ## 文档
 
-| 文档 | 内容 |
-|---|---|
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | 模块边界、依赖方向、测试 seam |
-| [v1 契约](docs/specs/0001-v1-contract.md) | 配置、profile、工具、send、结果、bridge |
-| [GLOSSARY](docs/GLOSSARY.md) | 术语 |
-| [决策索引](docs/decisions/README.md) | 一份决定一个文件 |
-| [herdr 恢复与状态实测](docs/research/herdr-恢复与状态实测.md) | herdr 行为依据 |
-| [herdr agent list 实测](docs/research/herdr-agent-list.md) | `agent list` 原文与字段结论 |
-| [herdr workspace create 实测](docs/research/herdr-workspace-create.md) | `workspace create` / `tab create --workspace` 的字段 |
-| [pi install 与 pack 产物实测](docs/research/pi-install-pack.md) | tarball 不是 pi 包源；本地验证用 npm 布局 |
+- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界与 seam，改结构前看
+- [GLOSSARY](docs/GLOSSARY.md) — 术语唯一来源，命名前看
+- [模块](docs/modules/) — 各模块的用法与取舍
 
 ## 开发
 
-| 命令 | 作用 |
-|---|---|
-| `pnpm install` | 装依赖 |
-| `pnpm check` | 提交前全跑：lint → 导入边界 → 类型 → 单测 |
-| `pnpm lint` | biome 检查 |
-| `pnpm check:imports` | 依赖方向检查 |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm test` | 单测（vitest） |
-| `pnpm test:e2e` | 真机 E2E：真 herdr + 真 pi 子进程 |
+```bash
+pnpm install        # 装依赖
+pnpm check          # 下面几步一次跑完，含单测
+pnpm test           # 单测（vitest）
+pnpm lint           # biome
+pnpm typecheck      # tsc --noEmit
+pnpm check:imports  # 依赖方向，按 docs/ARCHITECTURE.md 校验
+pnpm test:e2e       # 真 herdr + 真 pi 子进程，不在 pnpm check 里
+```
 
 启用提交钩子，之后就自动跑 `pnpm check`：
 

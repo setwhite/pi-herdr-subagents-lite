@@ -199,28 +199,21 @@ The design is based on these projects. Thank you.
 
 All docs are in Chinese.
 
-| Doc | Content |
-|---|---|
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | Module boundaries, dependency direction, test seams |
-| [v1 contract](docs/specs/0001-v1-contract.md) | Config, profile, tool, send, results, bridge |
-| [GLOSSARY](docs/GLOSSARY.md) | Terms |
-| [Decision index](docs/decisions/README.md) | One decision per file |
-| [herdr recovery and status](docs/research/herdr-恢复与状态实测.md) | Observed herdr behavior |
-| [herdr agent list](docs/research/herdr-agent-list.md) | `agent list` output and field conclusions |
-| [herdr workspace create](docs/research/herdr-workspace-create.md) | Fields of `workspace create` / `tab create --workspace` |
-| [pi install and pack output](docs/research/pi-install-pack.md) | A tarball is not a pi package source; verify locally with npm layout |
+- [ARCHITECTURE](docs/ARCHITECTURE.md): module boundaries, dependency direction, test seams; read before changing structure
+- [GLOSSARY](docs/GLOSSARY.md): the only source for terms; read before naming
+- [Modules](docs/modules/): usage and trade-offs for each module
 
 ## Development
 
-| Command | Purpose |
-|---|---|
-| `pnpm install` | Install dependencies |
-| `pnpm check` | Everything before a commit: lint → import boundaries → types → unit tests |
-| `pnpm lint` | biome check |
-| `pnpm check:imports` | Dependency direction check |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm test` | Unit tests (vitest) |
-| `pnpm test:e2e` | Real E2E: real herdr plus real pi child processes |
+```bash
+pnpm install        # dependencies
+pnpm check          # everything below in one run, plus unit tests
+pnpm test           # unit tests (vitest)
+pnpm lint           # biome
+pnpm typecheck      # tsc --noEmit
+pnpm check:imports  # dependency direction, enforced against docs/ARCHITECTURE.md
+pnpm test:e2e       # real herdr plus real pi children; not part of pnpm check
+```
 
 Enable the commit hook once and `pnpm check` runs on every commit:
 
