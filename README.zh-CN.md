@@ -2,128 +2,103 @@
 
 [English](README.md) | 简体中文
 
-在 herdr pane 里运行 pi 子代理的扩展。一个工具、两个 action：`run` 开子代理，`send` 续聊，结果异步回到父会话。
+pi 扩展：让子代理作为独立 pi 进程跑在 herdr pane 里。一个工具，两个 action：`run` 起子代理，`send` 续聊，结果异步回投。
 
-experimental：v1 契约已定，不承诺跨版本兼容。行为细节见 [v1 契约](docs/specs/0001-v1-contract.md)。
+实验阶段，不保证跨版本兼容。行为以 [v1 契约](docs/specs/0001-v1-contract.md) 为准。
 
 ## 功能
 
-- **独立进程，可随时接管**：子代理是 herdr pane 里的独立 pi 进程。cwd 与父相同时开同 workspace 的新 tab，不同时新建 workspace；人可以直接切进那个 pane 接手续作。
-- **profile 分两层**：Markdown + frontmatter。全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目 `.pi/pi-herdr-subagents-lite/profiles/` 同名覆盖全局。
-- **异步回投**：`run` 立即返回。子代理收工后，结果以 `subagent_result` 消息回到父会话；`aggregateWindowMs` 内的多个结果合并成一条消息。
-- **超长结果落盘**：超过 `maxResultChars` 时全文写 artifact，消息里只留截断头部与文件路径。
-- **反问交给人**：子代理弹出对话框时，父会话收到 `subagent_question`，`bridge` 把事件发成 `herdr:blocked`。人在子 pane 里回答，父模型不代答。
-- **收尾可控**：profile 的 `auto-exit` 决定收工后是否自退并关 tab；`closeChildrenOn` 决定父会话以哪些原因结束时关子 tab。
-- **默认禁嵌套**：子代理的工具集默认去掉本工具。要嵌套，就在 profile 的 `tools` 里显式写上工具名。
-- **不是沙箱**：子代理能用哪些工具由 profile 决定，扩展不做写限制。
+- **独立进程，可人工接管**：每个子代理是 herdr pane 里独立的 pi 进程。cwd 与父相同则同 workspace 新开 tab，否则新建 workspace。随时切进去接管。
+- **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，同名时项目层覆盖。
+- **异步、可合并的结果**：`run` 立即返回。每个子代理收工时投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
+- **反问留在人这边**：子代理弹出对话框时，父侧收到 `subagent_question` 并发出 `herdr:blocked` 事件。人在子 pane 里回答，父模型不转达。
+- **默认不嵌套，也不是沙箱**：子代理的工具集默认去掉本工具，profile 里点名才授予。工具由 profile 决定，扩展不限制写操作。
 
 ## 要求
 
-| 依赖 | 说明 |
-|---|---|
-| herdr | 在 `0.9.5` 上验证；父会话必须在 herdr pane 里，否则报 `not_in_herdr` |
-| pi | 在 `1.4.0` 上验证 |
-| Node | `>= 22.19` |
+herdr `0.9.5`、pi `1.4.0`、Node `>= 22.19`。父会话必须在 herdr pane 里，否则调用返回 `not_in_herdr`。
 
 ## 安装
 
-三种来源任选一种，装完重启 pi。
-
-**npm**
+选一种来源，装完重启 pi。
 
 ```bash
-pi install npm:pi-herdr-subagents-lite
+pi install npm:pi-herdr-subagents-lite                     # npm
+pi install git:github.com/setwhite/pi-herdr-subagents-lite # git
+pi install /path/to/pi-herdr-subagents-lite                # 本地源码
+pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程生效
 ```
 
-**git**
+不要加 `-l`：它只写项目设置，在别的 workspace 里起的子代理就加载不到，inbox 泵和 bridge 都会失效。`pi -e` 同样是单进程。
 
-```bash
-pi install git:github.com/setwhite/pi-herdr-subagents-lite
-```
-
-**本地源码**
-
-```bash
-pi install /path/to/pi-herdr-subagents-lite                 # 装进 settings，子代理也加载
-pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对本次进程生效
-```
-
-`pi install` 写个人 settings（`<agent-dir>/settings.json`），对所有项目生效。**不要加 `-l`**：`-l` 只写项目 settings，子代理在别的 workspace 启动时不会加载本包，inbox 泵与 bridge 都会失效。`pi -e` 同样只影响当前进程，子代理里没有本扩展。
-
-升级用 `pi update --extensions`，卸载用 `pi remove <source>`。装好后在 herdr pane 里启动 pi，工具列表里应出现 `subagent`（或配置的 `toolName`）。
+升级用 `pi update --extensions`，卸载用 `pi remove <source>`。重启后工具列表里出现 `subagent`（或你配的 `toolName`）。
 
 ## 快速开始
 
-1. 在 herdr 里开个 pane，启动 `pi`。
-2. 写一个 profile（见下节）。文件名去掉 `.md` 就是 `run` 用的名字。
-3. 让模型调用工具，参数形如：
+1. 在 herdr pane 里启动 `pi`。
+2. 写一个 profile（下一节）；文件名去掉 `.md` 就是 `run` 的寻址名。
+3. 让模型调用工具：
 
 ```json
-{"action":"run","profile":"explore","task":"Read README.md and answer with its first heading."}
+{"action":"run","profile":"explore","task":"读 README.md，回答它的第一个标题。"}
 ```
 
-4. 返回 `{"state":"running",...}`。子代理在独立 tab 里跑；收工后 `[subagent explore-1] done` 消息回到父会话。不要在同一个回合里等结果。
-
-续聊同一个子代理：
+它返回 `{"state":"running",...}`，子代理在自己的 tab 里跑，稍后收到 `[subagent explore-1] done` 消息。不要在同一轮里等结果。续聊那个子代理：
 
 ```json
-{"action":"send","name":"explore-1","message":"Also check the Windows branch."}
+{"action":"send","name":"explore-1","message":"也看一下 Windows 那条分支。"}
 ```
 
 ## Profile
 
-全局放 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目放 `.pi/pi-herdr-subagents-lite/profiles/*.md`（项目受信任后才读），同名项目覆盖全局。
+全局 profile 在 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 profile 在 `.pi/pi-herdr-subagents-lite/profiles/*.md`（项目受信任后才读）；同名时项目覆盖全局。
 
 ```markdown
 ---
-# 显示名，只出现在工具 guidelines 的 profile 列表；run 用的是文件名
+# 只作显示名；run 取文件名
 name: Explore
-description: 只读调研：读代码、答问题、不改文件
+description: 只读调研：读代码、回答问题，不改动任何文件
 
-# 省略 model / thinking 就继承父会话；model 写法与 pi 一致（provider/model）
+# 省略即继承父会话
 # model: provider/model
 thinking: low
 
-# 纯名字 = 严格 allowlist；+name / -name = 在默认集上增删，两种不能混用
-# 省略 = pi 默认集去掉本工具（默认禁嵌套）；空字符串 = 空 allowlist
+# 纯名字 = 严格白名单；+名字 / -名字 在默认集上增删，两者不能混用
+# 省略 = pi 默认集去掉本工具（不嵌套）；"" = 空白名单
 tools: read, bash
 
-# 省略 = pi 默认发现；"" = 不加载 skill；列表 = 只加载列出的
+# 省略 = 由 pi 发现；"" = 不加载；列表 = 只加载列出的
 skills: ""
 
-# append（默认）/ replace：body 追加或替换系统提示；task：body 就是任务说明，不写身份文件
+# append（默认）/ replace：正文追加到或替换系统提示
+# task：正文就是任务文本，不写身份文件
 system-prompt: append
 
-# 收工后子进程自己退出、父侧关 tab；有未答对话框或没取完 inbox 时不退
+# 收工后自行退出并关掉 tab；有打开的对话框或 inbox 待投递时会等
 auto-exit: true
 
-# true = 从 guidelines 隐藏，显式 run 仍可用
+# true = 从工具说明里隐藏；显式 run 仍然可用
 disable-model-invocation: false
 ---
 
-You are a read-only explorer. Answer with file paths and line numbers.
+你是一名只读探索者，回答时给出文件路径与行号。
 ```
 
-字段含义与默认值见[契约第 2 节](docs/specs/0001-v1-contract.md#2-profile)。解析失败的 profile 不进列表；`run` 一个坏 profile 会报 `profile_invalid`，含文件、字段与原因。
+字段默认值与错误码见 [契约 §2](docs/specs/0001-v1-contract.md#2-profile)。解析失败的文件不进列表；对它 `run` 返回 `profile_invalid`，带文件、字段与原因。
 
-### 自带示例
-
-安装后扩展写一份示例到 `<agent-dir>/pi-herdr-subagents-lite/profiles/examples/domain.md`：只在文件缺失时写，你的改动不会被覆盖。加载只看 `profiles/*.md`，所以示例默认不生效；复制一层就能用：
+扩展自带一个示例 profile。加载只读 `profiles/*.md`，示例也只在缺失时写入，所以复制一层上去即可：
 
 ```bash
-cd ~/.pi/agent/pi-herdr-subagents-lite/profiles
-cp examples/domain.md domain.md
+cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md
 ```
-
-`domain` 是通用的领域 worker：`disable-model-invocation: true` 让它不出现在工具 guidelines 里，只有你点名才用；`auto-exit: true` 让它干完关 tab。用法是把另一个领域的活连同上下文交给它，让子代理用新上下文接着做。
 
 ## 配置
 
-路径：`<agent-dir>/pi-herdr-subagents-lite/config.json`。`<agent-dir>` 默认 `~/.pi/agent`，可用 `PI_CODING_AGENT_DIR` 重定位。只有全局一份，不读项目配置。
+只有一个全局文件：`<agent-dir>/pi-herdr-subagents-lite/config.json`。`<agent-dir>` 默认 `~/.pi/agent`，跟随 `PI_CODING_AGENT_DIR`。项目级配置不读。
 
 ### 最小配置
 
-文件不存在 = 全部默认。只改一项就只写一项：
+文件不存在就全用默认值。只改一项，就只写这一项：
 
 ```json
 {
@@ -133,67 +108,66 @@ cp examples/domain.md domain.md
 
 ### 完整配置
 
-下面列出所有键，值与默认值一致。配置必须是严格 JSON：未知键、类型错、枚举错都会让扩展加载失败，pi 直接退出并指出字段。示例里的 `//` 是注释，复制时要删掉。
+逐项列出，值是默认值。必须是严格 JSON：未知键、类型不对、枚举非法都会让扩展加载失败，pi 报出字段名退出。`//` 行是注释，用之前删掉。
 
 ```jsonc
 {
-  // 只控制工具注册；bridge 由 bridge.enabled 单独控制；已跑的子代理不受影响
+  // 只管工具注册；bridge 有自己的开关
   "enabled": true,
 
-  // 工具名，模型看到的就是它；写法 ^[a-z][a-z0-9_]{0,31}$
+  // 模型看到的工具名；^[a-z][a-z0-9_]{0,31}$
   "toolName": "subagent",
 
-  // herdr 可执行文件。默认按 PATH 解析；写绝对路径可以固定版本
+  // 从 PATH 解析；写绝对路径可锁定版本
   "herdrBin": "herdr",
 
-  // 每个父会话同时存活的子代理上限。auto-exit 为 false 的子代理收工后仍占一个槽
+  // 每个父会话并存的子代理数；auto-exit 为 false 的子代理收工后仍占槽
   "maxConcurrent": 16,
 
-  // 单条结果的字符上限（1024–1048576）。超过就把全文写 artifact，消息里留截断头部与路径
+  // 单条结果上限（1024-1048576）；超了全文落 artifact，消息里留截断的头和路径
   "maxResultChars": 16384,
 
-  // 聚合窗口（0–10000 毫秒）。窗口内的多个结果合并成一条消息；0 = 逐条立即回投
+  // 合并窗口，毫秒（0-10000）；窗口内的结果并成一条，0 = 逐条立即投递
   "aggregateWindowMs": 500,
 
-  // 父会话以这些原因结束时关掉它的子 tab。空数组 = 一律不关
-  // 可选值：new / resume / fork / quit / reload
+  // 父会话以这些原因退出时关掉子 tab：new / resume / fork / quit / reload；空 = 从不关
   "closeChildrenOn": [],
 
-  // 子代理侧轮询 inbox 的间隔（50–5000 毫秒）
+  // 子侧 inbox 轮询间隔，毫秒（50-5000）
   "inboxPollMs": 250,
 
-  // 父侧轮询 herdr agent list 的间隔（100–60000 毫秒）。调大省进程，调小更快发现收工
+  // 父侧 agent list 轮询间隔，毫秒（100-60000）；调大省进程，调小更早发现收工
   "pollIntervalMs": 1000,
 
   // 覆盖工具文案。省略的键用内置文案；下面的值是占位符，不用就整段删掉
   "prompts": {
     "description": "一句话说明这个工具做什么",
-    "snippet": "Available tools 里显示的一行说明",
-    // 整体替换内置 guidelines；要保留 profile 列表，就留一行含 {{profiles}} 的文本
-    "guidelines": ["Do not wait for a result in this turn.", "Available profiles:\n{{profiles}}"]
+    "snippet": "Available tools 里的一句话",
+    // 保留含 {{profiles}} 的行才会保留 profile 列表
+    "guidelines": ["不要在本轮等待结果。", "可用 profile：\n{{profiles}}"]
   },
 
-  // bridge：把 pi 的对话框事件发成 herdr:blocked，供原生提醒使用
+  // 把 pi 的对话框事件转成 herdr:blocked，供原生通知使用
   "bridge": {
     "enabled": true,
-    // 哪类对话框算 blocked；默认全部
+    // 哪些对话框算 blocked
     "blockedOn": ["custom", "select", "confirm", "input", "editor"]
   }
 }
 ```
 
-数值超出范围不报错，静默 clamp 到边界。配置只读一次，改完要重启 pi。
+超范围的数字会被夹到边界，不报错。配置只读一次，改完重启 pi。
 
 ## 参考项目
 
-设计取自下列项目，特此致谢：
+设计参考了这些项目，感谢作者。
 
-| 项目 | 借鉴 |
+| 项目 | 借鉴内容 |
 |---|---|
 | [earendil-works/pi](https://github.com/earendil-works/pi) | 扩展 API、包布局、官方示例 |
-| [fyang93/pi-herdr-subagents](https://github.com/fyang93/pi-herdr-subagents) | profile 字段形状、独立 herdr session 的集成测试做法 |
-| [modem-dev/pi-herdr-subagents](https://github.com/modem-dev/pi-herdr-subagents) | herdr 启动方式与生命周期、结束状态归档思路 |
-| [purboo/pi-durable-subagents](https://github.com/purboo/pi-durable-subagents) | 异步回投、幂等、「只上报一次」的消息设计 |
+| [fyang93/pi-herdr-subagents](https://github.com/fyang93/pi-herdr-subagents) | profile 字段形状；隔离 herdr session 的集成测试 |
+| [modem-dev/pi-herdr-subagents](https://github.com/modem-dev/pi-herdr-subagents) | herdr 启动与生命周期；终态归类 |
+| [purboo/pi-durable-subagents](https://github.com/purboo/pi-durable-subagents) | 异步投递、幂等、只上报一次 |
 
 ## 文档
 
@@ -205,7 +179,7 @@ cp examples/domain.md domain.md
 
 ```bash
 pnpm install        # 装依赖
-pnpm check          # 下面几步一次跑完，含单测
+pnpm check          # lint + 导入边界 + 类型 + 单测
 pnpm test           # 单测（vitest）
 pnpm lint           # biome
 pnpm typecheck      # tsc --noEmit
@@ -213,18 +187,9 @@ pnpm check:imports  # 依赖方向，按 docs/ARCHITECTURE.md 校验
 pnpm test:e2e       # 真 herdr + 真 pi 子进程，不在 pnpm check 里
 ```
 
-启用提交钩子，之后就自动跑 `pnpm check`：
+跑一次 `git config core.hooksPath .githooks`，之后每次提交都会跑 `pnpm check`。
 
-```bash
-git config core.hooksPath .githooks
-```
-
-E2E 不在 `pnpm check` 里，单独跑。它自己起隔离的 herdr session 与 agent 目录，缺 herdr、pi 或 `auth.json` 时整组跳过并给出原因。
-
-| 环境变量 | 作用 |
-|---|---|
-| `PI_E2E_MODEL=provider/model` | 换 E2E 用的模型 |
-| `PI_E2E_KEEP=1` | 保留临时目录，便于事后排查 |
+E2E 自己起隔离的 herdr session 与 agent 目录，缺 herdr、pi 或 `auth.json` 时整组跳过并给出原因。`PI_E2E_MODEL` 换模型；`PI_E2E_KEEP=1` 保留临时目录。
 
 ## 许可
 
