@@ -56,7 +56,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
 | `tools` | string | `-<toolName>` | 省略 = pi 默认集去掉本工具（防嵌套）；纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项（`<agent-dir>/skills/<name>`）；列表项是名字，不带 `+` / `-` |
-| `system-prompt` | string | append | append / replace / task；省略 = append，见 [D51](../decisions/D51-system-prompt.md) |
+| `system-prompt` | string | append | append / replace / task；省略 = append，见 [0051](../decisions/0051-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
 
@@ -149,7 +149,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 ## 6. 结果消息
 
-完成检测按 `completion_seq` 与本 run 的 `lastHandledSeq` 去重，每个 run 最多投递一条结果消息。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。机制见 [D52](../decisions/D52-completion-snapshot.md)。
+完成检测按 `completion_seq` 与本 run 的 `lastHandledSeq` 去重，每个 run 最多投递一条结果消息。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。机制见 [0052](../decisions/0052-completion-snapshot.md)。
 
 异步结果是一条 `subagent_result` 自定义消息；父模型看到的是文本，不是工具结果：
 

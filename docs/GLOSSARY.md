@@ -7,8 +7,8 @@
 | **pi-herdr-subagents** | 同名参考项目：本机装的是 fyang93 1.1.0；另有 modem-dev 版本 | 不是 herdr 的一部分，也不是本项目的 fork 来源 |
 | **pi-durable** | 可嵌入的 durable harness；子代理是同进程子 conversation | 没接进 pi CLI |
 | **常驻子进程** | `pi --session <file>`，可续聊、反问、steer | 不是一次性 `-p --no-session` |
-| **任务简报** | `<childSession>.brief.md`；内容是 `# Task` 段加任务正文（D9） | 不是 profile body，也不是 session 文件 |
-| **身份文件** | `<childSession>.identity.md`；存 profile body（D51） | 不是任务简报，也不是 session 文件 |
+| **任务简报** | `<childSession>.brief.md`；内容是 `# Task` 段加任务正文（0009） | 不是 profile body，也不是 session 文件 |
+| **身份文件** | `<childSession>.identity.md`；存 profile body（0051） | 不是任务简报，也不是 session 文件 |
 | **槽位** | `maxConcurrent` 的一个名额；占槽 = run 还在记录里且未结算 | 不是 herdr 的 pane 数 |
 | **live** | 占着槽位、还在轮询的 run / agent | 不是 `agent_status` 的取值 |
 | **profile** | 角色模板；全局与项目各一层 `profiles/*.md`，同名项目覆盖；文件名是 profile 名（路径见契约 §2） | 不是 agent name |
@@ -19,7 +19,7 @@
 | **blocked** | agent 正在等人处理输入；v1 由 bridge 监听 `ui_prompt_*` 上报 | 不靠屏幕检测 |
 | **bridge** | 同一扩展内的监听器；`ui_prompt_start/end` → `herdr:blocked`（v1） | 不是 herdr 自带集成，也不是第二个入口 |
 | **结果 artifact** | 超限结果的全文文件，`<childSession>.result-<seq>.md` | 不是子 session 文件，也不是每次结果都写 |
-| **子侧 inbox** | `<childSession>.inbox/`；send 写、子进程读（D26） | 不是 herdr 的消息队列，也不是结果通道 |
+| **子侧 inbox** | `<childSession>.inbox/`；send 写、子进程读（0026） | 不是 herdr 的消息队列，也不是结果通道 |
 | **subagent_result** | 回投父会话的异步结果消息 | 不是工具的同步返回值 |
 | **subagent_question** | 子代理 blocked 时，父侧转发其 toolCall 参数里的问题的消息（v1） | 不是子代理主动调的工具 |
 | **auto-exit** | profile 字段；true = 子代理收工后自己 shutdown，父侧关 tab（v1） | 不是全局配置 |

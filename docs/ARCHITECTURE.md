@@ -99,6 +99,6 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 ## 7. 约束
 
-- 不建自建 registry、不做角色检测、不设展示字段：见 D38、D46、D33。
+- 不建自建 registry、不做角色检测、不设展示字段：见 0038、0046、0033。
 - 收工 QA：`pnpm check`，组成见 `package.json`。
-- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（D53），缺 herdr / pi / auth 时跳过。
+- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（0053），缺 herdr / pi / auth 时跳过。
