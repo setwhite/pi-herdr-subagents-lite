@@ -1845,6 +1845,10 @@ it("reports unreadable result as unknown", async () => {
   const { calls, sent, tool } = loadTimedSession(async () => ({ status: "idle", completionSeq: 1 }));
 
   const started = parseStarted(await runTask(tool, "no output"));
+  writeFileSync(
+    started.sessionFile,
+    `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "thinking", thinking: "..." }] } })}\n`,
+  );
 
   await vi.advanceTimersByTimeAsync(1000);
   expect(sent).toHaveLength(0);

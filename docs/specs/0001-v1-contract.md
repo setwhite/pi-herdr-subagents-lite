@@ -183,6 +183,7 @@ Full result: <childSession>.result-3.md
 | 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane_exited)` |
 
 - 已经投递过的 run 不再因回执重复投递。
+- 子代理还没写过 assistant 消息时不结算，继续等它写完或死亡（防止启动阶段的 idle 被当成完成）。
 - 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 失败）、`close_failed`（关 tab 失败后补投）。
 
 ~~~text

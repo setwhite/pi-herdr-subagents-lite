@@ -7,6 +7,7 @@ export interface SessionSnapshot {
   text: string | null;
   pendingToolCall: boolean;
   toolCall?: ToolCall;
+  empty: boolean;
 }
 
 interface SessionEntry {
@@ -78,8 +79,8 @@ export function parseLastAssistant(raw: string): SessionSnapshot {
     }
     const toolCall = lastToolCall(entry.message?.content);
     return toolCall === undefined
-      ? { text: textOf(entry), pendingToolCall: false }
-      : { text: textOf(entry), pendingToolCall: true, toolCall };
+      ? { text: textOf(entry), pendingToolCall: false, empty: false }
+      : { text: textOf(entry), pendingToolCall: true, toolCall, empty: false };
   }
-  return { text: null, pendingToolCall: false };
+  return { text: null, pendingToolCall: false, empty: true };
 }

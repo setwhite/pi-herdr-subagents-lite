@@ -17,7 +17,7 @@ export const readLastAssistant: SessionReader = (path) => {
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return { text: null, pendingToolCall: false };
+    return { text: null, pendingToolCall: false, empty: true };
   }
   return parseLastAssistant(raw);
 };

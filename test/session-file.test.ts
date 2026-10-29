@@ -24,7 +24,7 @@ interface ToolCall {
 interface SessionCase {
   name: string;
   lines?: string[];
-  expected: { text: string | null; pendingToolCall: boolean; toolCall?: ToolCall };
+  expected: { text: string | null; pendingToolCall: boolean; toolCall?: ToolCall; empty: boolean };
 }
 
 const cases: SessionCase[] = [
@@ -34,7 +34,7 @@ const cases: SessionCase[] = [
       message("assistant", [{ type: "text", text: "first" }]),
       message("assistant", [{ type: "text", text: "second" }]),
     ],
-    expected: { text: "second", pendingToolCall: false },
+    expected: { text: "second", pendingToolCall: false, empty: false },
   },
   {
     name: "joins multiple text blocks with newlines",
@@ -45,12 +45,12 @@ const cases: SessionCase[] = [
         { type: "text", text: "Second block." },
       ]),
     ],
-    expected: { text: "First block.\nSecond block.", pendingToolCall: false },
+    expected: { text: "First block.\nSecond block.", pendingToolCall: false, empty: false },
   },
   {
     name: "skips malformed lines",
     lines: [message("assistant", [{ type: "text", text: "kept" }]), "{not json"],
-    expected: { text: "kept", pendingToolCall: false },
+    expected: { text: "kept", pendingToolCall: false, empty: false },
   },
   {
     name: "returns null when the last assistant has no text",
@@ -58,11 +58,16 @@ const cases: SessionCase[] = [
       message("assistant", [{ type: "text", text: "earlier" }]),
       message("assistant", [{ type: "thinking", thinking: "only thinking" }]),
     ],
-    expected: { text: null, pendingToolCall: false },
+    expected: { text: null, pendingToolCall: false, empty: false },
   },
   {
     name: "returns null when the file is missing",
-    expected: { text: null, pendingToolCall: false },
+    expected: { text: null, pendingToolCall: false, empty: true },
+  },
+  {
+    name: "is empty when no assistant message is written yet",
+    lines: [message("user", [{ type: "text", text: "# Task" }])],
+    expected: { text: null, pendingToolCall: false, empty: true },
   },
   {
     name: "marks a trailing tool call as pending",
@@ -77,6 +82,7 @@ const cases: SessionCase[] = [
       text: "Need a decision.",
       pendingToolCall: true,
       toolCall: { name: "ask_user_question", arguments: {} },
+      empty: false,
     },
   },
   {
@@ -86,6 +92,7 @@ const cases: SessionCase[] = [
       text: null,
       pendingToolCall: true,
       toolCall: { name: "ask_user_question", arguments: {} },
+      empty: false,
     },
   },
   {
@@ -104,6 +111,7 @@ const cases: SessionCase[] = [
       text: null,
       pendingToolCall: true,
       toolCall: { name: "ask_user_question", arguments: { questions: [{ question: "Continue?" }] } },
+      empty: false,
     },
   },
   {
@@ -118,6 +126,7 @@ const cases: SessionCase[] = [
       text: null,
       pendingToolCall: true,
       toolCall: { name: "edit", arguments: { path: "a.ts" } },
+      empty: false,
     },
   },
 ];

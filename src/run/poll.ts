@@ -85,7 +85,7 @@ async function readResult(state: RunState, run: RunRecord, seq: number, attempt:
   }
 
   const snapshot = state.readLastAssistant(run.sessionFile);
-  if (snapshot.pendingToolCall) {
+  if (snapshot.pendingToolCall || snapshot.empty) {
     ensurePoll(state);
     return;
   }
