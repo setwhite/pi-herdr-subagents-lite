@@ -1,5 +1,5 @@
 /**
- * docs/ARCHITECTURE.md §2 的可执行版本：依赖方向边表 + 单一出口。
+ * docs/ARCHITECTURE.md §3 的可执行版本：依赖方向边表 + 单一出口。
  * 规则改了先改 ARCHITECTURE.md，再改这里的 EDGES / SINGLE_IMPORT；本脚本只校验源码，不比对文档。
  */
 
@@ -110,7 +110,7 @@ for (const file of files.sort()) {
 }
 
 if (failures.length > 0) {
-  console.error("Import graph violates docs/ARCHITECTURE.md §2:");
+  console.error("Import graph violates docs/ARCHITECTURE.md §3:");
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
