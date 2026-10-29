@@ -46,7 +46,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 路径：全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 `.pi/pi-herdr-subagents-lite/profiles/*.md`；同名项目覆盖全局。项目 profile 只在项目受信任后读取。
 
-格式：YAML frontmatter + Markdown body。profile 名 = 文件名（去 `.md`）；frontmatter `name` 可选，只显示在 profile 列表。
+格式：YAML frontmatter + Markdown body。profile 名 = 文件名（去 `.md`）；frontmatter `name` 可选，与文件名不同时 profile 列表写成 `文件名 (显示名)`。
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|

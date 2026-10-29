@@ -1095,7 +1095,7 @@ it("rejects unknown agent", async () => {
 
 it("lists profiles on unknown profile", async () => {
   process.env.HERDR_ENV = "1";
-  writeProfile("explore.md", "---\ndescription: Explore the repo\n---\n\nExplore body.\n");
+  writeProfile("explore.md", "---\nname: Inspector\ndescription: Explore the repo\n---\n\nExplore body.\n");
   const { calls, host } = fakeHost();
   const tool = loadTool(host);
 
@@ -1103,7 +1103,7 @@ it("lists profiles on unknown profile", async () => {
 
   expect(result.isError).toBe(true);
   expect(result.details).toMatchObject({ code: "unknown_profile" });
-  expect(firstText(result)).toContain("explore");
+  expect(firstText(result)).toContain("explore (Inspector) — Explore the repo");
   expect(calls).toEqual([]);
 });
 
@@ -1232,7 +1232,7 @@ it("expands profiles in guidelines", () => {
 
   writeProfile("named.md", "---\nname: Explorer\ndescription: Named profile\n---\n\nNamed body.\n");
   const named = loadSession(fakeHost().host);
-  expect(named.tool.promptGuidelines?.join("\n")).toContain("Explorer — Named profile");
+  expect(named.tool.promptGuidelines?.join("\n")).toContain("named (Explorer) — Named profile");
 
   writeConfig({ prompts: { guidelines: ["Use {{toolName}}"] } });
   const overridden = loadSession(fakeHost().host);

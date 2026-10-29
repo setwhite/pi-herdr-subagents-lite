@@ -2,7 +2,8 @@ import type { Profile, ProfileCatalog } from "../profile/index.ts";
 import { ToolError } from "./errors.ts";
 
 export function profileLabel(profile: Profile): string {
-  return profile.description === "" ? profile.displayName : `${profile.displayName} — ${profile.description}`;
+  const label = profile.displayName === profile.name ? profile.name : `${profile.name} (${profile.displayName})`;
+  return profile.description === "" ? label : `${label} — ${profile.description}`;
 }
 
 export function resolveProfile({ profiles, problems }: ProfileCatalog, name: string): Profile {

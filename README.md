@@ -55,7 +55,7 @@ Global profiles live in `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`, pro
 
 ```markdown
 ---
-# Display name only; run takes the file name
+# Listed as "file (name)"; run takes the file name
 name: Explore
 description: "Read-only research: read code, answer questions, change nothing"
 

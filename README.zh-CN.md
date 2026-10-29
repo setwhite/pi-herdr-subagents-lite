@@ -55,7 +55,7 @@ pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程�
 
 ```markdown
 ---
-# 只作显示名；run 取文件名
+# 列表写作「文件名 (显示名)」；run 取文件名
 name: Explore
 description: 只读调研：读代码、回答问题，不改动任何文件
 
