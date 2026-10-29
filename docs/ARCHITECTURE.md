@@ -78,10 +78,10 @@ profile -> config
 | `readLastAssistant` | 纯函数表驱动 | JSONL 解析边界 |
 | `inbox` | 临时 session 路径 + 真实 fs；子侧泵经 fake pi + fake timers | 建目录、入队顺序、按序投递、归档、失败保留 |
 | bridge | fake pi events | `ui_prompt_*` → `herdr:blocked`、`blockedOn` 过滤 |
-| 真实 HerdrHost + pi | 手工 E2E | CLI argv/JSON、tab/agent/read/close、真实 child |
+| 真实 HerdrHost + 真实 pi | `pnpm test:e2e`（`e2e/`，不进 `pnpm check`） | CLI argv/JSON、tab/agent/pane、真实 child、结果回投、续聊、关 tab |
 | `createPaneCommands` | fake `exec`（记 argv、回固定 JSON） | workspace / tab 的 argv 与 JSON 字段解析 |
 
-mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：不 mock 模块内部，不 mock Node fs。真实 herdr 行为变化先补 [研究记录](research/) 再改代码；手工步骤见 [e2e/herdr.md](e2e/herdr.md)。
+mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：不 mock 模块内部，不 mock Node fs。真实 herdr 行为变化先补 [研究记录](research/) 再改代码；真机回归跑 `pnpm test:e2e`。
 
 ## 6. 文档职责
 
@@ -93,7 +93,6 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 | `docs/specs/*.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
 | `docs/GLOSSARY.md` | 本扩展特有术语的唯一命名来源 | 实现细节 |
 | `docs/modules/*.md` | 单个模块的用法与取舍 | 依赖方向、契约字段表 |
-| `docs/e2e/herdr.md` | 当前手工 E2E runbook | 契约与理由 |
 | `docs/research/*.md` | 外部实测与参考记录 | 当前契约 |
 
 内容归属冲突时以本表裁决；跨文档只允许指针，不允许复述。
@@ -102,4 +101,4 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 - 不建自建 registry、不做角色检测、不设展示字段：见 D38、D46、D33。
 - 收工 QA：`pnpm check`，组成见 `package.json`。
-- 手动验收用隔离 agent 目录（D53），步骤见 [e2e/herdr.md](e2e/herdr.md)。
+- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（D53），缺 herdr / pi / auth 时跳过。

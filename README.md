@@ -37,14 +37,13 @@ pnpm check                            # lint + check:imports + typecheck + test
 git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 ~~~
 
-真实 herdr 的手工 E2E 见 [e2e/herdr.md](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/e2e/herdr.md)。
+真机回归：`pnpm test:e2e`。它自己起隔离的 herdr session 与 agent 目录，跑真实 pi 子进程；缺 herdr、pi 或 `auth.json` 时整组跳过并给出原因。`PI_E2E_MODEL=provider/model` 换模型，`PI_E2E_KEEP=1` 保留临时目录。
 
 ## 文档
 
 - [ARCHITECTURE](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块文档索引。
 - [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
 - [GLOSSARY](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/GLOSSARY.md) — 术语。
-- [herdr E2E](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/e2e/herdr.md) — 当前的手工回归 runbook。
 - [参考实现](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
 - [herdr 恢复与状态实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
 - [herdr agent list 实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-agent-list.md) — `agent list` 原文与字段结论。

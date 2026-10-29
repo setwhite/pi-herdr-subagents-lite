@@ -5,7 +5,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"]
+    "includes": [
+      "src/**/*.ts",
+      "test/**/*.ts",
+      "e2e/**/*.ts",
+      "scripts/**/*.mjs",
+      "vitest.config.ts",
+      "vitest.e2e.config.ts"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

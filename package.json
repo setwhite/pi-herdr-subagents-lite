@@ -25,6 +25,7 @@
     "check:imports": "node scripts/check-imports.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "check": "pnpm lint && pnpm check:imports && pnpm typecheck && pnpm test"
   },
   "peerDependencies": {
