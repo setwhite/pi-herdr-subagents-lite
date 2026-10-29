@@ -10,7 +10,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 路径：
 
 - 只有全局一份：`<agent-dir>/pi-herdr-subagents-lite/config.json`；`<agent-dir>` 默认 `~/.pi/agent`，可用 `PI_CODING_AGENT_DIR` 重定位。不读项目配置。
-- 严格 JSON：未知键、类型错误、枚举错误 = 配置无效；不注册工具，错误里指出字段；pi 继续运行。数值越界静默 clamp。
+- 严格 JSON：未知键、类型错误、枚举错误 = 配置无效；扩展加载失败，pi 报错退出并提示 `pi -ne`，错误里指出字段。数值越界静默 clamp。
 - 只读一次；改完重启 pi 生效。文件不存在 = 全部默认。
 
 默认值与 clamp 边界以 `src/config/index.ts` 与 `test/config.test.ts` 为准；本表只写语义。
@@ -145,7 +145,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 「尾部干净」只看有没有未完成的 toolCall；以 assistant 文本、toolResult、user 或 custom 消息结尾都算干净。
 
-重启用 run 记录的 `cwd`，不重读 profile；改 profile 的 cwd 不影响已启动的子代理。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
+重启用 run 记录的 `cwd`；profile 重新读取（0031），身份文件按新 profile 重写，所以改 profile 的 cwd 不影响已启动的子代理。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
 
 ## 6. 结果消息
 

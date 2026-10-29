@@ -73,7 +73,7 @@ export async function start(state: RunState, profileName: string, task: string, 
     blocked: false,
     live: true,
   };
-  // Reserve the slot before the first await: concurrent run() calls must see it.
+  // 先占槽再 await：并发的 run() 必须立刻看到它。
   state.runs.push(run);
 
   try {

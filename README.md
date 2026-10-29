@@ -44,7 +44,6 @@ git config core.hooksPath .githooks   # 启用 pre-commit，一次即可
 - [ARCHITECTURE](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/ARCHITECTURE.md) — 模块边界、依赖、测试 seam、模块文档索引。
 - [v1 契约](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/specs/0001-v1-contract.md) — v1 配置、profile、工具、send、结果、bridge。
 - [GLOSSARY](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/GLOSSARY.md) — 术语。
-- [参考实现](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/reference-implementations.md) — durable、两个 herdr 参考、官方 example。
 - [herdr 恢复与状态实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-恢复与状态实测.md) — herdr 行为依据。
 - [herdr agent list 实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-agent-list.md) — `agent list` 原文与字段结论。
 - [herdr workspace create 实测](https://github.com/setwhite/pi-herdr-subagents-lite/blob/main/docs/research/herdr-workspace-create.md) — `workspace create` / `tab create --workspace` 的字段与初始 tab。

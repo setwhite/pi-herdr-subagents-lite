@@ -75,7 +75,7 @@ profile -> config
 | pi 扩展 API + 注入 HerdrHost | fake pi、fake host、fake timers、临时 session JSONL、`PI_CODING_AGENT_DIR` 指向临时目录 | 工具契约、run 生命周期、profile argv、身份文件、并发、send 续聊与重启、结果消息、关闭 |
 | `loadConfig` | 临时 agent 目录 + 真实 fs | 默认值、clamp、严格校验 |
 | `loadProfiles` | 临时 agent 目录、临时项目目录 + 真实 fs | frontmatter、字段校验、坏字段、受信项目覆盖 |
-| `readLastAssistant` | 纯函数表驱动 | JSONL 解析边界 |
+| `readLastAssistant` | 表驱动 + 临时 JSONL | JSONL 解析边界、空文件 |
 | `inbox` | 临时 session 路径 + 真实 fs；子侧泵经 fake pi + fake timers | 建目录、入队顺序、按序投递、归档、失败保留 |
 | bridge | fake pi events | `ui_prompt_*` → `herdr:blocked`、`blockedOn` 过滤 |
 | 真实 HerdrHost + 真实 pi | `pnpm test:e2e`（`e2e/`，不进 `pnpm check`） | CLI argv/JSON、tab/agent/pane、真实 child、结果回投、续聊、关 tab |
