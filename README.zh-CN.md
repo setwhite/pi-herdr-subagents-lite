@@ -142,9 +142,10 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
   // 覆盖工具文案。省略的键用内置文案；下面的值是占位符，不用就整段删掉
   "prompts": {
     "description": "一句话说明这个工具做什么",
-    "snippet": "Available tools 里的一句话",
-    // 保留含 {{profiles}} 的行才会保留 profile 列表
-    "guidelines": ["不要在本轮等待结果。", "可用 profile：\n{{profiles}}"]
+    // 留空 = 不出现在 Available tools 列表
+    "snippet": "",
+    // 一行一条，工具名前缀自动加；保留 {{profiles}} 才会列出 profile
+    "guidelines": ["可用 profile：\n{{profiles}}"]
   },
 
   // 把 pi 的对话框事件转成 herdr:blocked，供原生通知使用

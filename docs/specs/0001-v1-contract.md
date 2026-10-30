@@ -74,7 +74,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 |---|---|
 | name | `config.toolName`，默认 `subagent` |
 | label | `Subagent` |
-| description / snippet / guidelines | 见 `src/tool/text.ts`；profile 列表在注册时展开 |
+| description / snippet / guidelines | 见 `src/tool/text.ts`；guideline 自动加 `toolName: ` 前缀；`{{profiles}}` 在注册时展开 |
 
 参数（schema 以 `src/tool/schema.ts` 为准）：
 

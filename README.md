@@ -142,9 +142,10 @@ Every key with its default. Strict JSON: an unknown key, a wrong type or a bad e
   // Override tool text. Omitted keys keep the built-in text; the values are placeholders, drop the whole block if unused
   "prompts": {
     "description": "One line about what this tool does",
-    "snippet": "One line shown in Available tools",
-    // Keep a line containing {{profiles}} to keep the profile list
-    "guidelines": ["Do not wait for a result in this turn.", "Available profiles:\n{{profiles}}"]
+    // Empty hides the tool from Available tools
+    "snippet": "",
+    // One guideline per line; the tool name prefix is added for you. Keep {{profiles}} to list profiles
+    "guidelines": ["Available profiles:\n{{profiles}}"]
   },
 
   // Turns pi prompt events into herdr:blocked, for native notifications

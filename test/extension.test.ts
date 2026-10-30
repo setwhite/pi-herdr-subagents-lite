@@ -631,18 +631,13 @@ it("rejects outside herdr", async () => {
   expect(calls).toEqual([]);
 });
 
-it("documents the asynchronous prompt contract", () => {
+it("keeps the default prompt short", () => {
   const tool = loadTool(fakeHost().host);
-  const description = tool.description.toLowerCase();
-  const snippet = (tool.promptSnippet ?? "").toLowerCase();
-  const guidelines = (tool.promptGuidelines ?? []).join("\n").toLowerCase();
 
-  expect(description).toContain("start a subagent");
-  expect(description).toContain("asynchronously");
-  expect(snippet).toContain("background subagent");
-  expect(snippet).toContain("asynchronously");
-  expect(guidelines).toContain("subagent_result");
-  expect(guidelines).toContain("available profiles");
+  expect(tool.description).toBe("Start subagents and talk to them.");
+  expect(tool.promptSnippet).toBe("");
+  expect(tool.promptGuidelines).toHaveLength(1);
+  expect(tool.promptGuidelines?.[0]?.startsWith("subagent: Available profiles:\n")).toBe(true);
 });
 
 it("launches a worker", async () => {
@@ -1257,9 +1252,9 @@ it("expands profiles in guidelines", () => {
   expect(named.tool.promptGuidelines?.join("\n")).toContain("Explorer — Named profile");
   expect(named.tool.promptGuidelines?.join("\n")).not.toContain("named (Explorer)");
 
-  writeConfig({ prompts: { guidelines: ["Use {{toolName}}"] } });
+  writeConfig({ prompts: { guidelines: ["Ask for a self-contained task."] } });
   const overridden = loadSession(fakeHost().host);
-  expect(overridden.tool.promptGuidelines).toEqual(["Use subagent"]);
+  expect(overridden.tool.promptGuidelines).toEqual(["subagent: Ask for a self-contained task."]);
 
   writeConfig({ prompts: { snippet: "" } });
   const hidden = loadSession(fakeHost().host);
