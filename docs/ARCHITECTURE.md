@@ -50,7 +50,7 @@ tool ..> config       (type-only)
 tool ..> profile      (type-only)
 run -> herdr
 run -> profile
-run -> session-file
+run ..> session-file
 run -> inbox
 run -> config
 bridge ..> config      (type-only)
@@ -60,7 +60,7 @@ profile -> config
 - 只能沿箭头依赖，禁止反向 import；`config`、`herdr`、`session-file`、`inbox` 是叶子。
 - `config` 只认 Node fs/path/os，不 import pi；配置错误的唯一表达是一条带字段名的 Error。
 - `inbox` 只认 Node fs/path/crypto，不解析消息内容，不记投递失败次数；泵的每拍动作由调用方注入。
-- `run` 不 import pi；`extension` 不 import 真实 CLI 或 fs；只有 `index.ts` 同时认识真实适配器与 pi。
+- `run` 不 import pi；`extension` 不 import 真实 CLI 或 fs；只有 `index.ts` 把真实适配器、配置与 pi 装配到一起。
 - 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts`、`src/tool/index.ts` 只做 type-only import，在 `src/profile/` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
 - 上述边与「单一出口」由 `scripts/check-imports.mjs` 执行（`pnpm check:imports`）：改这张图就同步改脚本里的 `EDGES` / `SINGLE_IMPORT`；脚本只校验源码，不比对本文。
 
@@ -87,10 +87,10 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 | 文件 | 只写 | 不写 |
 |---|---|---|
-| `README.md` | 安装、用法、开发、文档索引 | 模块签名、选型理由 |
+| `README.md` | 安装、用法、配置、开发、文档索引 | 模块签名、选型理由 |
 | `docs/ARCHITECTURE.md` | 模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则、模块文档索引 | 字段表、决策理由、进度、模块用法 |
 | `docs/decisions/*.md` | 决策编号、理由、取消项、边界；一条一份 | 字段表、配置/命令行 |
-| `docs/specs/*.md` | v1 对外配置、profile、工具、结果、send、bridge | 决策理由、内部签名 |
+| `docs/specs/*.md` | v1 对外配置、profile、工具、命名、结果、send、bridge | 决策理由、内部签名 |
 | `docs/GLOSSARY.md` | 本扩展特有术语的唯一命名来源 | 实现细节 |
 | `docs/modules/*.md` | 单个模块的用法与取舍 | 依赖方向、契约字段表 |
 | `docs/research/*.md` | 外部实测与参考记录 | 当前契约 |
@@ -99,6 +99,6 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 ## 7. 约束
 
-- 不建自建 registry、不做角色检测、不设展示字段：见 0038、0046、0033。
+- 不建自建 registry、不做角色检测、不设展示字段：见 DEC-0038、DEC-0046、DEC-0033。
 - 收工 QA：`pnpm check`，组成见 `package.json`。
-- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（0053），缺 herdr / pi / auth 时跳过。
+- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（DEC-0053），缺 herdr / pi / auth 时跳过。

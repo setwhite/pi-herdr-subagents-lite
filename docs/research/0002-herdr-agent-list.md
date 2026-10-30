@@ -1,4 +1,4 @@
-# herdr agent list 实测
+# 0002 herdr agent list 实测
 
 采集：2026-10-28，herdr 0.9.5，`herdr agent list`。同会话另有 working 的 pi agent；第三个 pane 的 pi agent 先 `herdr agent rename wG:p5 probe-agent`，采集后 `--clear`。
 

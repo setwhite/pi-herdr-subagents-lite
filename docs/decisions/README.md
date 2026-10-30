@@ -2,7 +2,7 @@
 
 v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 `run` / `send`；结果异步回投；fresh only。当前代码见 [ARCHITECTURE](../ARCHITECTURE.md)。
 
-一条决策一份文件，文件名前缀就是 ID（`0036` → [0036-result-pipeline.md](0036-result-pipeline.md)）。v1 契约见 [v1 契约](../specs/0001-v1-contract.md)；已取消的提案见 [cancelled.md](cancelled.md)。
+一条决策一份文件，文件名前缀就是编号（`0036` → [0036-result-pipeline.md](0036-result-pipeline.md)）；正文引用写 `DEC-0036`。v1 契约见 [v1 契约](../specs/0001-v1-contract.md)；已取消的提案见 [CANCELLED.md](CANCELLED.md)。
 
 ## 形态
 

@@ -1,4 +1,4 @@
-# herdr 恢复与状态实测
+# 0001 herdr 恢复与状态实测
 
 研究记录；当前契约见 [v1 契约](../specs/0001-v1-contract.md)，决策见 [决策](../decisions/README.md)。
 
@@ -65,7 +65,7 @@ herdr --session u16test agent explain tester --json
 
 `~/.pi/agent/extensions/herdr-agent-state.ts:211` 监听 `herdr:blocked`；`rg 'herdr:blocked' ~/.pi/agent/npm/node_modules ~/.pi/agent/extensions` 只命中这一处监听，没有 emit 方。
 
-本项目的 `bridge` 实测：`ui_prompt_start/end` → `herdr:blocked` 后，ask 弹窗期间 `agent get` 为 `blocked`，`agent prompt` 返回 `agent_blocked`；Esc 后恢复 `idle`。见 [0040](../decisions/0040-bridge.md)。
+本项目的 `bridge` 实测：`ui_prompt_start/end` → `herdr:blocked` 后，ask 弹窗期间 `agent get` 为 `blocked`，`agent prompt` 返回 `agent_blocked`；Esc 后恢复 `idle`。见 [DEC-0040](../decisions/0040-bridge.md)。
 
 ### 测试 4：恢复后的悬空工具调用
 
@@ -77,4 +77,4 @@ herdr --session u16test agent explain tester --json
 
 ## 未决
 
-- herdr server 重启时 pending ask 对话框是否重绘：未实测；父侧不重放（0038），需要时人工处理。
+- herdr server 重启时 pending ask 对话框是否重绘：未实测；父侧不重放（DEC-0038），需要时人工处理。

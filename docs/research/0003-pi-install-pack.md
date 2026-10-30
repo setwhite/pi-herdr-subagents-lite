@@ -1,4 +1,4 @@
-# pi install 与 pack 产物实测
+# 0003 pi install 与 pack 产物实测
 
 研究记录；契约见 [v1 契约](../specs/0001-v1-contract.md)。
 

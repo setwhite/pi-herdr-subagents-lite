@@ -174,6 +174,7 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 - [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界与 seam，改结构前看
 - [GLOSSARY](docs/GLOSSARY.md) — 术语唯一来源，命名前看
 - [模块](docs/modules/) — 各模块的用法与取舍
+- [ADR](docs/decisions/) — 已决选型与理由，改设计前扫一遍
 
 ## 开发
 

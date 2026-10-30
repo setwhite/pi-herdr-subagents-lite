@@ -176,6 +176,7 @@ All docs are in Chinese.
 - [ARCHITECTURE](docs/ARCHITECTURE.md): module boundaries, dependency direction, test seams
 - [GLOSSARY](docs/GLOSSARY.md): the only source for terms
 - [Modules](docs/modules/): usage and trade-offs per module
+- [ADR](docs/decisions/): decisions and rejected proposals, with reasons
 
 ## Development
 
