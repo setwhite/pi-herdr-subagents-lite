@@ -24,7 +24,7 @@
 | [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `receipt.ts` |
 | [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` |
 | [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`BlockedKind`、`ShutdownReason`、`isRaw`、`Raw` | `index.ts` `schema.ts` |
-| [`profile`](modules/profile.md) | profile 读取、校验、分层、示例落盘 | `loadProfiles`、`seedExampleProfile`、`globalProfilesDir`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources`、`EXAMPLE_PROFILE` | `index.ts` `frontmatter.ts` `layers.ts` `examples.ts` |
+| [`profile`](modules/profile.md) | profile 读取、校验、分层、示例落盘 | `loadProfiles`、`seedExampleProfile`、`globalProfilesDir`、`agentDir`、`skillPath`、`Profile`、`ProfileCatalog`、`ProfileSources`、`EXAMPLE_PROFILE`、`EXAMPLE_PROFILE_FILE` | `index.ts` `frontmatter.ts` `layers.ts` `examples.ts` |
 | [`bridge`](modules/bridge.md) | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` |
 
 入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
@@ -87,7 +87,7 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 | 文件 | 只写 | 不写 |
 |---|---|---|
-| `README.md` | 安装、用法、配置、开发、文档索引 | 模块签名、选型理由 |
+| `README.md` | 功能、要求、安装、用法、profile、配置、参考项目、文档索引、开发、许可 | 模块签名、选型理由 |
 | `docs/ARCHITECTURE.md` | 模块边界、依赖方向、命名与拆分规则、测试 seam、文档规则、模块文档索引 | 字段表、决策理由、进度、模块用法 |
 | `docs/decisions/*.md` | 决策编号、理由、取消项、边界；一条一份 | 字段表、配置/命令行 |
 | `docs/specs/*.md` | v1 对外配置、profile、工具、命名、结果、send、bridge | 决策理由、内部签名 |
@@ -101,4 +101,4 @@ mock 只有三处：pi 扩展 API、注入的 `HerdrHost`、注入的 `exec`：�
 
 - 不建自建 registry、不做角色检测、不设展示字段：见 DEC-0038、DEC-0046、DEC-0033。
 - 收工 QA：`pnpm check`，组成见 `package.json`。
-- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（DEC-0053），缺 herdr / pi / auth 时跳过。
+- 真机验收跑 `pnpm test:e2e`；它自建隔离 agent 目录与 herdr session（见 `e2e/harness.ts`），缺 herdr / pi / auth 时跳过。

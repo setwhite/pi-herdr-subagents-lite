@@ -84,7 +84,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `profile` | run | 是 | string | profile 名；未知时报错并列出可用 profile |
 | `task` | run | 是 | string | 自包含任务；原样写入 brief，不要再写 `# Task` 段；brief 会落盘，不写密钥 |
 | `cwd` | run | 否 | string | 子进程工作目录；相对路径按父 cwd 解析，`~` 展开为 home；省略 = 父 cwd |
-| `name` | send | 是 | string | run 返回的子代理名 |
+| `name` | send | 是 | string | run 返回的子代理名；匹配 `^[a-z][a-z0-9_-]{0,31}$` |
 | `message` | send | 是 | string | 新消息 |
 
 返回：
@@ -105,7 +105,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `max_concurrent` | live 子代理已达 maxConcurrent | 当前 live 名称；等结果或关一个 |
 | `profile_invalid` | profile 字段解析失败 | 文件 + 字段 + 原因 |
 | `spawn_failed` | tab / pane / agent start 失败；含未就绪与 trust 对话框拦住 | 底层错误；已创建的 pane id 保留；未就绪时附「去 pane 处理对话框」 |
-| `name_exhausted` | 自动命名重试用尽仍冲突 | 当前 live 名称；关一个再试 |
+| `name_exhausted` | 自动命名重试用尽仍冲突 | 尝试 100 次仍无空闲名 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |
 | `session_missing` | send 的 run 记录存在，但子 session 文件不存在 | 用 run 新建 |
 
@@ -124,10 +124,10 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 ## 4. 命名与展示
 
 - `name = <profile>-<n>`；slug 由 profile 名派生，规则见 `src/run/naming.ts`。
-- `n` 从 1 开始，按 profile 递增；`agent_name_taken` 时 +1 重试，用尽后 `name_exhausted`（上限见 `src/run/naming.ts`）。
+- `n` 从 1 开始，按 profile slug 递增；`agent_name_taken` 时 +1 重试，用尽后 `name_exhausted`（上限 100，见 `src/run/start.ts`）。
 - tab 标签 = `name`。
 - 侧边栏显示 herdr 的 agent name；**不设 `display_agent`**。
-- pane 标签 = 任务第一行；去掉 markdown 前缀、折叠空白、去控制字符、截 32 字。
+- pane 标签 = 任务第一行；去掉 markdown 前缀、折叠空白、去控制字符、截 32 字；为空时用 `name`。
 - 不设 `title` / `state_labels`；新 workspace 的 label 创建时设为 `name`，之后不改。
 - `send` 用同一个 `name`。
 - 人改 tab 标签不影响寻址；寻址用 agent name。agent 被 `herdr agent rename` 改名后，按 run 记录的 `paneId` 在 `agent list` 里回落匹配。
@@ -138,7 +138,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 | 子代理状态 | send 做什么 | 返回 |
 |---|---|---|
-| agent 存在（working / idle / blocked / done / unknown） | 写 `<childSession>.inbox/`；working 时 steer，idle / done 时新 turn，blocked / unknown 时排队，人回答后处理 | `{state:"sent", name}` |
+| agent 存在（working / idle / blocked / done / unknown） | 写 `<childSession>.inbox/`；子进程按自己是否 idle 选择新 turn 或 steer；有未答对话框时排队，人回答后处理 | `{state:"sent", name}` |
 | 已退出，pane 还在，尾部干净 | 同 pane、同名 `agent start --session <childSession>`，再写 inbox；profile 重新读取 | `{state:"restarted", name, paneId}` |
 | 已退出，pane 已关（auto-exit） | 新建 tab，同名 `agent start --session <childSession>`，再写 inbox | `{state:"restarted", name, paneId}` |
 | 已退出，尾部有未完成 toolCall | 不重启 | `tail_dirty` |
@@ -147,11 +147,11 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 「尾部干净」只看有没有未完成的 toolCall；以 assistant 文本、toolResult、user 或 custom 消息结尾都算干净。
 
-重启用 run 记录的 `cwd`；profile 重新读取（DEC-0031），身份文件按新 profile 重写，所以改 profile 的 cwd 不影响已启动的子代理。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
+重启用 run 记录的 `cwd`；profile 重新读取（DEC-0031），非 `task` 模式按新 profile 重写身份文件。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
 
 ## 6. 结果消息
 
-完成检测按 `completion_seq` 与本 run 的 `lastHandledSeq` 去重，每个 run 最多投递一条结果消息。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。机制见 [DEC-0052](../decisions/0052-completion-snapshot.md)。
+完成检测按 `completion_seq` 与本 run 的 `lastHandledSeq` 去重：每次完成最多投递一条 done 结果；同一个 run 经 `send` 续聊后可有多条。`close_failed` 是在 done 之后、关 tab 失败时补投的 unknown。单次 `agent list` 失败不是死亡；只有成功返回且 run 的 `pane_id` 与 `name` 都不在列表里才算死亡。机制见 [DEC-0052](../decisions/0052-completion-snapshot.md)。
 
 异步结果是一条 `subagent_result` 自定义消息；父模型看到的是文本，不是工具结果：
 
@@ -178,26 +178,26 @@ Full result: <childSession>.result-3.md
 
 - 子代理死亡时按子 session 尾部与 `<childSession>.exit` 判定（回执只有 `{ reason }`）：
 
-| 回执 | 投递 |
+| 回执 | 结果 |
 |---|---|
 | 有回执，session 尾部有最终文本且没有未完成 toolCall | `done`，正文取该文本 |
-| 有回执，尾部没有可用文本 | `unknown (quitted)` |
-| 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown (pane_exited)` |
+| 有回执，尾部没有可用文本 | `unknown`，原因 `quitted` |
+| 没有回执（没走 shutdown） | 退回读 session 尾部，同上判定；否则 `unknown`，原因 `pane_exited` |
 
 - 已经投递过的 run 不再因回执重复投递。
 - 子代理还没写过 assistant 消息时不结算，继续等它写完或死亡（防止启动阶段的 idle 被当成完成）。
 - 其余 `unknown` 原因：`no_result`（读 3 次仍没有文本）、`poll_failed`（连续 3 拍 `agent list` 失败）、`close_failed`（关 tab 失败后补投）。
 
 ~~~text
-[subagent explore-1] unknown (pane_exited)
+[subagent explore-1] the pane exited without a result
 
-Session: <childSession>
+Session file: <childSession>
 ~~~
 
 - 死亡消息是该 run 的终态：最多一条，不受 `lastHandledSeq` 约束。
 - 子代理 blocked（`agent_status = blocked`）时父侧不发消息，也不读它的 toolCall：问题与答案都留在子 pane，由人处理。blocked 期间不结算结果，继续等它离开 blocked。
-- 投递失败不重发；父会话收到一条 `delivery failed` 通知。
-- `auto-exit: true` 的子代理退出后，父侧先投递结果，再关只含该 pane 的 tab。
+- 投递失败不重发；父会话收到一条 `subagent result not delivered` 通知。
+- `auto-exit: true` 的子代理收工并投递 `done` 结果后，父侧再关只含该 pane 的 tab；`unknown` 不关。
 
 ## 7. bridge
 

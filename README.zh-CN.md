@@ -4,13 +4,13 @@
 
 pi 扩展：让子代理作为独立 pi 进程跑在 herdr pane 里。一个工具，两个 action：`run` 起子代理，`send` 续聊，结果异步回投。
 
-实验阶段，不保证跨版本兼容。行为以 [v1 契约](docs/specs/0001-v1-contract.md) 为准。
+行为以 [v1 契约](docs/specs/0001-v1-contract.md) 为准。
 
 ## 功能
 
 - **独立进程，可人工接管**：每个子代理是 herdr pane 里独立的 pi 进程。cwd 与父相同则同 workspace 新开 tab，否则新建 workspace。随时切进去接管。
 - **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，`name` 相同时项目层覆盖。
-- **异步、可合并的结果**：`run` 立即返回。每个子代理收工时投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
+- **异步、可合并的结果**：`run` 立即返回。每次收工投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
 - **反问留在人这边**：子代理弹出对话框时只发出 `herdr:blocked` 事件，父侧什么也收不到。人在子 pane 里回答，不经模型转达。
 - **默认不嵌套，也不是沙箱**：子代理的工具集默认去掉本工具，profile 里点名才授予。工具由 profile 决定，扩展不限制写操作。
 
@@ -55,7 +55,7 @@ pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程�
 
 ```markdown
 ---
-# run 的寻址名；建议与文件名保持一致
+# run 的寻址名；文件名不参与查找
 name: explore
 description: 只读调研：读代码、回答问题，不改动任何文件
 

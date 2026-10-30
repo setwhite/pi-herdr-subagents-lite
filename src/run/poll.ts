@@ -33,7 +33,7 @@ async function tick(state: RunState): Promise<void> {
   try {
     await pollRuns(state);
   } catch {
-    // finish 已结算投递失败的 run；其余 run 下一拍继续。
+    // 同步投递失败时 finish 已结算该 run；其余 run 下一拍继续。
   } finally {
     state.pollBusy = false;
     ensurePoll(state);
