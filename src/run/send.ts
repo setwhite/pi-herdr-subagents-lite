@@ -40,7 +40,6 @@ export async function send(state: RunState, name: string, message: string): Prom
       run.lastHandledSeq = agent.completionSeq;
       run.live = true;
       run.pollFailures = 0;
-      run.blocked = false;
       ensurePoll(state);
     }
     await enqueue(run.sessionFile, inboxMessage(message));
@@ -94,7 +93,6 @@ export async function send(state: RunState, name: string, message: string): Prom
 
   run.live = true;
   run.pollFailures = 0;
-  run.blocked = false;
   ensurePoll(state);
   await enqueue(run.sessionFile, inboxMessage(message));
   return { state: "restarted", name: run.name, paneId: run.paneId };

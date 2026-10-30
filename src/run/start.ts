@@ -70,7 +70,6 @@ export async function start(state: RunState, profileName: string, task: string, 
     lastDeliveredText: null,
     artifactSeq: 0,
     pollFailures: 0,
-    blocked: false,
     live: true,
   };
   // 先占槽再 await：并发的 run() 必须立刻看到它。

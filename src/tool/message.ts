@@ -1,4 +1,4 @@
-import type { RunQuestion, RunResult } from "../run/index.ts";
+import type { RunResult } from "../run/index.ts";
 
 export interface ResultMessage {
   customType: string;
@@ -17,17 +17,6 @@ function resultText(result: RunResult): string {
   const artifact = result.artifact ? `\n\nFull result: ${result.artifact}` : "";
   const warning = result.warning ? `\n\n${result.warning}` : "";
   return `[subagent ${result.name}] done\n\n${result.text}${artifact}${warning}`;
-}
-
-const QUESTION_FOOTER = [
-  "The human answers it in the child's pane. A follow-up sent with send is",
-  "queued until the dialog closes.",
-].join("\n");
-
-export function sendQuestion(sink: MessageSink, question: RunQuestion): void {
-  const body = question.text.trim() === "" ? "" : `\n\n${question.text.trim()}`;
-  const content = `[subagent ${question.name}] blocked (question)${body}\n\n${QUESTION_FOOTER}`;
-  sink.sendMessage({ customType: "subagent_question", content, display: true }, { triggerTurn: true });
 }
 
 export function sendResults(sink: MessageSink, results: RunResult[]): void {

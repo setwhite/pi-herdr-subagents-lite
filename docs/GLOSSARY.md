@@ -21,7 +21,6 @@
 | **结果 artifact** | 超限结果的全文文件，`<childSession>.result-<seq>.md` | 不是子 session 文件，也不是每次结果都写 |
 | **子侧 inbox** | `<childSession>.inbox/`；send 写、子进程读（0026） | 不是 herdr 的消息队列，也不是结果通道 |
 | **subagent_result** | 回投父会话的异步结果消息 | 不是工具的同步返回值 |
-| **subagent_question** | 子代理 blocked 时，父侧转发其 toolCall 参数里的问题的消息（v1） | 不是子代理主动调的工具 |
 | **auto-exit** | profile 字段；true = 子代理收工后自己 shutdown，父侧关 tab（v1） | 不是全局配置 |
 | **exit 回执** | `<childSession>.exit`，子进程 shutdown 时写；有回执 = 走过 shutdown | 不是 session 文件本身，也不承载结果正文 |
 | **run** | 一个子代理从启动到退出的记录；`name` 与 `sessionFile` 在其生命周期内不变 | 不是 profile，也不是 herdr 的 agent 定义 |

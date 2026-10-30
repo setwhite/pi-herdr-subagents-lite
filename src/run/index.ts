@@ -5,7 +5,6 @@ import { createAggregator } from "./aggregate.ts";
 import { type CloseChildrenResult, closeRuns } from "./close.ts";
 import { createNamer } from "./naming.ts";
 import { stopPoll } from "./poll.ts";
-import type { QuestionHandler } from "./question.ts";
 import type { ResultHandler, RunResult } from "./result.ts";
 import { type SendResult, send } from "./send.ts";
 import { type RunStarted, start } from "./start.ts";
@@ -15,7 +14,6 @@ export interface RunService {
   run(profile: string, task: string, cwd?: string): Promise<RunStarted>;
   send(name: string, message: string): Promise<SendResult>;
   onResult(handler: ResultHandler): void;
-  onQuestion(handler: QuestionHandler): void;
   shutdown(): void;
   closeChildren(): Promise<CloseChildrenResult>;
   active(): string[];
@@ -42,7 +40,6 @@ export function createRunService(deps: RunServiceDeps): RunService {
     runs: [],
     resultHandler: undefined,
     results: undefined,
-    questionHandler: undefined,
     pollBusy: false,
     nextName: createNamer(),
     active() {
@@ -88,9 +85,6 @@ export function createRunService(deps: RunServiceDeps): RunService {
     onResult(handler) {
       state.resultHandler = handler;
     },
-    onQuestion(handler) {
-      state.questionHandler = handler;
-    },
     shutdown() {
       stopService(state);
       takeRuns(state);
@@ -105,7 +99,6 @@ export function createRunService(deps: RunServiceDeps): RunService {
 
 export type { CloseChildrenResult } from "./close.ts";
 export { ToolError } from "./errors.ts";
-export type { QuestionHandler, RunQuestion } from "./question.ts";
 export { profileLabel } from "./resolve.ts";
 export type { ResultHandler, RunResult } from "./result.ts";
 export type { SendResult } from "./send.ts";

@@ -11,7 +11,7 @@ pi 扩展：让子代理作为独立 pi 进程跑在 herdr pane 里。一个工�
 - **独立进程，可人工接管**：每个子代理是 herdr pane 里独立的 pi 进程。cwd 与父相同则同 workspace 新开 tab，否则新建 workspace。随时切进去接管。
 - **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，同名时项目层覆盖。
 - **异步、可合并的结果**：`run` 立即返回。每个子代理收工时投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
-- **反问留在人这边**：子代理弹出对话框时，父侧收到 `subagent_question` 并发出 `herdr:blocked` 事件。人在子 pane 里回答，父模型不转达。
+- **反问留在人这边**：子代理弹出对话框时只发出 `herdr:blocked` 事件，父侧什么也收不到。人在子 pane 里回答，不经模型转达。
 - **默认不嵌套，也不是沙箱**：子代理的工具集默认去掉本工具，profile 里点名才授予。工具由 profile 决定，扩展不限制写操作。
 
 ## 要求

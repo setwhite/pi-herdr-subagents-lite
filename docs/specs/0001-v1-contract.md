@@ -194,21 +194,7 @@ Session: <childSession>
 ~~~
 
 - 死亡消息是该 run 的终态：最多一条，不受 `lastHandledSeq` 约束。
-- 子代理 blocked（`agent_status = blocked`）时，父侧从子 session 尾部取最后一个 assistant 消息的 toolCall 参数，发一次 `subagent_question`：
-
-~~~text
-[subagent explore-1] blocked (question)
-
-Confirm: Do you want to continue?
-- Yes
-- No — stop here
-
-The human answers it in the child's pane. A follow-up sent with send is
-queued until the dialog closes.
-~~~
-
-- 问题正文来自 toolCall 参数：有 `questions` 数组时取每项的 `header` / `question` 与 `options`；没有时取 `question` / `title` / `message` / `prompt` / `text` 里的第一个字符串；都没有就只发头部与尾注。
-- 同一个 blocked 只发一次，离开 blocked 后重置。
+- 子代理 blocked（`agent_status = blocked`）时父侧不发消息，也不读它的 toolCall：问题与答案都留在子 pane，由人处理。blocked 期间不结算结果，继续等它离开 blocked。
 - 投递失败不重发；父会话收到一条 `delivery failed` 通知。
 - `auto-exit: true` 的子代理退出后，父侧先投递结果，再关只含该 pane 的 tab。
 

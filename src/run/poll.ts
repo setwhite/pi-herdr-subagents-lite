@@ -1,7 +1,6 @@
 import type { AgentEntry } from "../herdr/index.ts";
 import { closeTab, shouldClose } from "./close.ts";
 import { findAgent } from "./find.ts";
-import { askBlocked } from "./question.ts";
 import type { RunResult } from "./result.ts";
 import { doneResult, unknownResult } from "./result.ts";
 import type { RunRecord, RunState } from "./state.ts";
@@ -66,11 +65,6 @@ async function pollRuns(state: RunState): Promise<void> {
       await exited(state, run);
       continue;
     }
-    if (agent.status === "blocked") {
-      await askBlocked(state, run);
-      continue;
-    }
-    run.blocked = false;
     run.pollFailures = 0;
     if (agent.completionSeq > run.lastHandledSeq && (agent.status === "idle" || agent.status === "done")) {
       await readResult(state, run, agent.completionSeq, 1);

@@ -6,7 +6,7 @@ import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
 import { createRunService, type RunService } from "../run/index.ts";
 import type { ExitReceiptReader, ExitReceiptWriter, SessionReader } from "../session-file/index.ts";
-import { createTool, type ResultMessage, type SubagentTool, sendQuestion, sendResults } from "../tool/index.ts";
+import { createTool, type ResultMessage, type SubagentTool, sendResults } from "../tool/index.ts";
 import { watchAutoExit } from "./auto-exit.ts";
 import { type ShutdownHandler, watchShutdown } from "./shutdown.ts";
 
@@ -120,7 +120,6 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         onDeliveryError: (error) => ctx.ui.notify(`delivery failed: ${errorText(error)}`, "error"),
       });
       service.onResult((results) => sendResults(pi, results));
-      service.onQuestion((question) => sendQuestion(pi, question));
     };
 
     pi.on("session_start", (_event, ctx) => {

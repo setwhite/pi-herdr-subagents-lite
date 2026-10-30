@@ -77,7 +77,6 @@ v1 设计：子代理是 herdr pane 里的常驻 pi 子进程；模型面只有 
 | # | 决策 |
 |---|---|
 | [0026](0026-file-inbox.md) | send 走文件 inbox |
-| [0054](0054-question-from-session.md) | 提问正文来自子 session 尾部 |
 | [0027](0027-no-write-limits.md) | 不做运行时写限制 |
 
 ## 工具与配置

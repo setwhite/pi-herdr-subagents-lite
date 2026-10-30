@@ -11,7 +11,7 @@ Experimental; compatibility across versions is not promised. Exact behavior live
 - **Separate process, human takeover**: each subagent is its own pi process in a herdr pane. Same cwd as the parent opens a tab in the same workspace, otherwise a new workspace. Switch into the pane and take over at any time.
 - **Profile layers**: Markdown + frontmatter under `<agent-dir>/pi-herdr-subagents-lite/profiles/`, plus a project layer under `.pi/pi-herdr-subagents-lite/profiles/` that wins on the same name.
 - **Async, merged results**: `run` returns at once. Each finished child reports one `subagent_result` message; results inside `aggregateWindowMs` merge into one. Oversize results go to an artifact file.
-- **Questions stay with the human**: a child prompt produces `subagent_question` plus a `herdr:blocked` event. The human answers in the child pane; the parent model never relays the answer.
+- **Questions stay with the human**: a child prompt marks its pane `herdr:blocked` and nothing goes to the parent. The human answers in the child pane; no model relays the answer.
 - **No nesting by default, no sandbox**: child tool sets drop this tool unless the profile names it. The profile picks tools; the extension does not restrict writes.
 
 ## Requirements
