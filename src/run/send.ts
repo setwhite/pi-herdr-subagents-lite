@@ -52,7 +52,7 @@ export async function send(state: RunState, name: string, message: string): Prom
   if (state.readLastAssistant(run.sessionFile).pendingToolCall) {
     throw new ToolError(
       "tail_dirty",
-      `child session "${run.sessionFile}" ends with an unfinished tool call; "${name}" not restarted`,
+      `"${name}" cannot restart: its session ends with an unfinished tool call. Wait for the child to finish, or start a new run.`,
     );
   }
 

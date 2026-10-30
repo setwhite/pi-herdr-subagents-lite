@@ -100,7 +100,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
           }
           stopInbox();
           const detail = errorText(error);
-          ctx.ui.notify(`inbox: stopped after ${INBOX_FAILURE_LIMIT} delivery failures: ${detail}`, "error");
+          ctx.ui.notify(`subagent messages stopped after ${INBOX_FAILURE_LIMIT} delivery failures: ${detail}`, "error");
         },
       });
     };
@@ -117,7 +117,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         aggregateWindowMs: config.aggregateWindowMs,
         pollIntervalMs: config.pollIntervalMs,
         toolName: config.toolName,
-        onDeliveryError: (error) => ctx.ui.notify(`delivery failed: ${errorText(error)}`, "error"),
+        onDeliveryError: (error) => ctx.ui.notify(`subagent result not delivered: ${errorText(error)}`, "error"),
       });
       service.onResult((results) => sendResults(pi, results));
     };

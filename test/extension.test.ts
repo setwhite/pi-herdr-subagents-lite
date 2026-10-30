@@ -1669,7 +1669,7 @@ it("reports a quitted run when the receipt has no final answer", async () => {
   await vi.advanceTimersByTimeAsync(1000);
 
   expect(sent).toHaveLength(1);
-  expect(sent[0]?.message.content).toContain("unknown (quitted)");
+  expect(sent[0]?.message.content).toContain("the child exited without a result");
 });
 
 it("reports pane exited without a receipt", async () => {
@@ -1681,8 +1681,8 @@ it("reports pane exited without a receipt", async () => {
 
   const content = sent[0]?.message.content ?? "";
   expect(sent).toHaveLength(1);
-  expect(content).toContain("unknown (pane_exited)");
-  expect(content).toContain(`Session: ${started.sessionFile}`);
+  expect(content).toContain("the pane exited without a result");
+  expect(content).toContain(`Session file: ${started.sessionFile}`);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
   await vi.advanceTimersByTimeAsync(5000);
@@ -1721,7 +1721,7 @@ it("reports three consecutive poll failures", async () => {
 
   await vi.advanceTimersByTimeAsync(1000);
   expect(sent).toHaveLength(1);
-  expect(sent[0]?.message.content).toContain("unknown (poll_failed)");
+  expect(sent[0]?.message.content).toContain("status could not be read");
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -1786,8 +1786,8 @@ it("reports unreadable result as unknown", async () => {
 
   const content = sent[0]?.message.content ?? "";
   expect(sent).toHaveLength(1);
-  expect(content).toContain("unknown (no_result)");
-  expect(content).toContain(`Session: ${started.sessionFile}`);
+  expect(content).toContain("no result was read");
+  expect(content).toContain(`Session file: ${started.sessionFile}`);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 
   const next = await runTask(tool, "next task");
@@ -1926,7 +1926,7 @@ async function expectDoneDespiteClose(closeTab: () => CloseTabResult | Error, cl
   expect(content).not.toContain("error");
   if (closeFailed) {
     expect(sent[1]?.message.content).toBe(
-      `[subagent worker-1] unknown (close_failed)\n\nSession: ${started.sessionFile}`,
+      `[subagent worker-1] result delivered, but the tab did not close\n\nSession file: ${started.sessionFile}`,
     );
   }
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(1);
@@ -2020,7 +2020,7 @@ it("reports a deferred delivery failure", async () => {
 
   await vi.advanceTimersByTimeAsync(500);
   expect(sent).toHaveLength(0);
-  expect(notifications.some((notification) => notification.message.includes("delivery failed"))).toBe(true);
+  expect(notifications.some((notification) => notification.message.includes("not delivered"))).toBe(true);
 });
 
 it("sends separately when aggregation is off", async () => {
@@ -2062,7 +2062,9 @@ it("keeps a tab with several panes", async () => {
   await runTask(tool, "long task");
   await shutdownSession("quit");
 
-  expect(notifications).toEqual([{ message: 'child "worker-1" kept: its tab was not a single pane', type: "warning" }]);
+  expect(notifications).toEqual([
+    { message: 'child "worker-1" kept running: its tab has more than one pane', type: "warning" },
+  ]);
 });
 
 it("shuts down after settle when auto-exit is on", async () => {
@@ -2178,7 +2180,9 @@ it("stops inbox polling after three failures", async () => {
   await vi.advanceTimersByTimeAsync(750);
 
   expect(child.userMessages).toHaveLength(3);
-  expect(child.notifications).toEqual([{ message: expect.stringContaining("inbox"), type: "error" }]);
+  expect(child.notifications).toEqual([
+    { message: expect.stringContaining("subagent messages stopped"), type: "error" },
+  ]);
 
   await vi.advanceTimersByTimeAsync(2000);
 

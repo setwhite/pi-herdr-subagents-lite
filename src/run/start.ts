@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { HerdrHostError } from "../herdr/index.ts";
 import { createInbox, removeInbox } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
-import { paneLabel, profileSlug } from "./naming.ts";
+import { paneLabel } from "./naming.ts";
 import { ensurePoll } from "./poll.ts";
 import { resolveProfile } from "./resolve.ts";
 import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, resolveCwd } from "./spawn-args.ts";
@@ -107,7 +107,7 @@ export async function start(state: RunState, profileName: string, task: string, 
         if (retry >= NAME_ATTEMPTS) {
           throw new ToolError(
             "name_exhausted",
-            `no free name for "${profileSlug(profileName)}" after ${NAME_ATTEMPTS} tries`,
+            `no free name for profile "${profileName}" after ${NAME_ATTEMPTS} attempts`,
           );
         }
         run.name = state.nextName(profileName);

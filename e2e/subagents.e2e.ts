@@ -122,8 +122,8 @@ describe.skipIf(!state.ok)(`herdr e2e${state.ok ? "" : ` (skipped: ${state.reaso
     killProcess(await e2e.childPid((pane as { pane_id: string }).pane_id));
 
     const unknown = await waitFor(() => messages(parent, "subagent_result")[0], "unknown result", 60_000);
-    expect(unknown).toContain(`[subagent ${started.name}] unknown (pane_exited)`);
-    expect(unknown).toContain(`Session: ${started.sessionFile}`);
+    expect(unknown).toContain(`[subagent ${started.name}] the pane exited without a result`);
+    expect(unknown).toContain(`Session file: ${started.sessionFile}`);
     expect(await e2e.tabFor(started.name)).toBeDefined();
     await e2e.closeChildren();
   }, 240_000);

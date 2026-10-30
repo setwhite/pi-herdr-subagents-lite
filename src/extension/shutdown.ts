@@ -27,10 +27,10 @@ export function watchShutdown(pi: ExtensionRegistrar, deps: ShutdownDeps): void 
     if (closing && deps.config.closeChildrenOn.includes(event.reason)) {
       const { kept, failed } = await closing.closeChildren();
       for (const name of kept) {
-        ctx.ui.notify(`child "${name}" kept: its tab was not a single pane`, "warning");
+        ctx.ui.notify(`child "${name}" kept running: its tab has more than one pane`, "warning");
       }
       for (const failure of failed) {
-        ctx.ui.notify(`child "${failure.name}" close failed: ${failure.reason}`, "error");
+        ctx.ui.notify(`could not close child "${failure.name}": ${failure.reason}`, "error");
       }
     } else {
       closing?.shutdown();

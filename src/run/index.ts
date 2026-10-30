@@ -100,7 +100,7 @@ export function createRunService(deps: RunServiceDeps): RunService {
 export type { CloseChildrenResult } from "./close.ts";
 export { ToolError } from "./errors.ts";
 export { profileLabel } from "./resolve.ts";
-export type { ResultHandler, RunResult } from "./result.ts";
+export type { ResultHandler, RunResult, UnknownReason } from "./result.ts";
 export type { SendResult } from "./send.ts";
 export { AUTO_EXIT_ENV } from "./spawn-args.ts";
 export type { RunStarted } from "./start.ts";
