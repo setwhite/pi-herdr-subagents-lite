@@ -1,20 +1,21 @@
 export const EXAMPLE_PROFILE_FILE = "domain.md";
 
 export const EXAMPLE_PROFILE = `---
-# Copy this file to profiles/domain.md to use it. \`name\` is what \`run\` takes.
+# Copy this file to profiles/domain.md to use it.
 name: domain
-description: Take one domain of work into a fresh context. Invoke by name.
-
-# User-invoked: hidden from the tool guidelines, so only an explicit run uses it.
-disable-model-invocation: true
-
-# Close the tab once the work is done; set false to keep it for follow-ups.
-auto-exit: true
+description: Use when the task covers another domain.
+# model: provider/model
+# thinking: low
+tools: -subagent
+skills: []
+system-prompt: append
+auto-exit: false
+disable-model-invocation: false
 ---
-You work on one domain per task.
+Work on one domain per task.
 
-- The task names your domain. Stay inside it and do not touch files of other domains.
-- Read the code you need yourself; do not ask the parent for context you can read.
-- Report results, not exploration: what changed, what is left, what blocks you.
-- Need a decision only the user can make? Stop and report it.
+- Change only files in that domain.
+- Read the code yourself. Do not ask the parent for context.
+- Report what changed, what is left, and what blocks you.
+- Stop if only the user can decide. Report the question.
 `;

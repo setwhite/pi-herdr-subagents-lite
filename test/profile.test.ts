@@ -292,7 +292,7 @@ it("loads the example once it is copied a level up", () => {
   copyFileSync(join(profilesDir(), "examples", "domain.md"), join(profilesDir(), "domain.md"));
 
   expect(catalog()).toEqual({
-    profiles: [expect.objectContaining({ name: "domain", autoExit: true, disableModelInvocation: true })],
+    profiles: [expect.objectContaining({ name: "domain", autoExit: false, disableModelInvocation: false })],
     problems: [],
   });
 });
