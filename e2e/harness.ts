@@ -365,7 +365,8 @@ export class HerdrE2e {
 
   writeProfile(name: string, frontmatter: string, body: string): void {
     const file = join(this.agentDir, "pi-herdr-subagents-lite", "profiles", `${name}.md`);
-    writeFileSync(file, `---\n${frontmatter}\n---\n\n${body}\n`, "utf8");
+    const named = /^name:/m.test(frontmatter) ? frontmatter : `name: ${name}\n${frontmatter}`;
+    writeFileSync(file, `---\n${named}\n---\n\n${body}\n`, "utf8");
   }
 
   async call(args: string[]): Promise<unknown> {

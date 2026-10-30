@@ -1,8 +1,8 @@
 export const EXAMPLE_PROFILE_FILE = "domain.md";
 
 export const EXAMPLE_PROFILE = `---
-# Copy this file to profiles/domain.md to use it. The file name is what \`run\` takes.
-name: Domain
+# Copy this file to profiles/domain.md to use it. \`name\` is what \`run\` takes.
+name: domain
 description: Take one domain of work into a fresh context. Invoke by name.
 
 # User-invoked: hidden from the tool guidelines, so only an explicit run uses it.

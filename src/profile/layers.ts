@@ -7,6 +7,7 @@ import {
   booleanField,
   enumField,
   type Fields,
+  nameField,
   type Profile,
   type ProfileProblem,
   SYSTEM_PROMPT_MODES,
@@ -27,24 +28,27 @@ export interface ProfileSources {
 }
 
 function parseProfile(file: string, source: string): { profile?: Profile; problems: ProfileProblem[] } {
-  const name = basename(file, ".md");
   let frontmatter: unknown;
   let body: string;
   try {
     ({ frontmatter, body } = parseFrontmatter(source));
   } catch (error) {
     const reason = error instanceof Error ? error.message : "parse failed";
-    return { problems: [{ name, file, field: "frontmatter", reason }] };
+    return { problems: [{ name: basename(file, ".md"), file, field: "frontmatter", reason }] };
   }
   if (!isRaw(frontmatter)) {
-    return { problems: [{ name, file, field: "frontmatter", reason: "expected a mapping" }] };
+    return { problems: [{ name: basename(file, ".md"), file, field: "frontmatter", reason: "expected a mapping" }] };
   }
 
   const problems: ProfileProblem[] = [];
-  const fields: Fields = { raw: frontmatter, name, file, problems };
+  const fields: Fields = { raw: frontmatter, name: basename(file, ".md"), file, problems };
+  const name = nameField(fields);
+  if (name === undefined) {
+    return { problems };
+  }
+  fields.name = name;
   const profile: Profile = {
     name,
-    displayName: stringField(fields, "name") ?? name,
     description: stringField(fields, "description") ?? "",
     body,
     model: stringField(fields, "model"),
@@ -69,7 +73,7 @@ function readProfilesDir(dir: string): ProfileCatalog {
     throw error;
   }
 
-  const profiles: Profile[] = [];
+  const parsed: Array<{ profile: Profile; file: string }> = [];
   const problems: ProfileProblem[] = [];
   for (const entry of entries.sort()) {
     const file = join(dir, entry);
@@ -81,12 +85,41 @@ function readProfilesDir(dir: string): ProfileCatalog {
       problems.push({ name: basename(entry, ".md"), file, field: "file", reason });
       continue;
     }
-    const parsed = parseProfile(file, source);
-    if (parsed.profile) {
-      profiles.push(parsed.profile);
+    const result = parseProfile(file, source);
+    if (result.profile) {
+      parsed.push({ profile: result.profile, file });
     }
-    problems.push(...parsed.problems);
+    problems.push(...result.problems);
   }
+
+  const byName = new Map<string, Array<{ profile: Profile; file: string }>>();
+  for (const entry of parsed) {
+    const group = byName.get(entry.profile.name);
+    if (group) {
+      group.push(entry);
+    } else {
+      byName.set(entry.profile.name, [entry]);
+    }
+  }
+
+  const profiles: Profile[] = [];
+  for (const [name, group] of byName) {
+    const [only] = group;
+    if (only && group.length === 1) {
+      profiles.push(only.profile);
+      continue;
+    }
+    for (const entry of group) {
+      const others = group.filter((other) => other.file !== entry.file).map((other) => other.file);
+      problems.push({
+        name,
+        file: entry.file,
+        field: "name",
+        reason: `duplicate profile name; also in ${others.join(", ")}`,
+      });
+    }
+  }
+  profiles.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   return { profiles, problems };
 }
 

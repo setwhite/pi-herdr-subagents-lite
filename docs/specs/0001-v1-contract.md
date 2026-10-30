@@ -43,13 +43,13 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 
 ## 2. Profile
 
-路径：全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 `.pi/pi-herdr-subagents-lite/profiles/*.md`；同名项目覆盖全局。项目 profile 只在项目受信任后读取。
+路径：全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 `.pi/pi-herdr-subagents-lite/profiles/*.md`；同名（frontmatter `name`）项目覆盖全局。项目 profile 只在项目受信任后读取。
 
-格式：YAML frontmatter + Markdown body。profile 名 = 文件名（去 `.md`）；frontmatter `name` 可选，与文件名不同时 profile 列表写成 `文件名 (显示名)`。
+格式：YAML frontmatter + Markdown body。profile 名 = frontmatter `name`，必填，去首尾空白后不能为空；文件名不参与寻址。guidelines 与 `run` 都只用这个名字。
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `name` | string | 文件名 | 显示名；不影响 tab / pane / agent name |
+| `name` | string | 无，必填 | profile 键，也是 guidelines 里的显示名；不影响 tab / pane / agent name |
 | `description` | string | 空 | 出现在工具 guidelines 的 profile 列表 |
 | `model` | string | 继承父 | provider/model 或 pi 支持的 pattern |
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
@@ -62,7 +62,9 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 - `ask_user_question` 不自动加入；想反问就写进 `tools`。
 - 子代理默认没有本工具，嵌套要显式打开：在 `tools` 里写上工具名（通常是 `subagent`）。不管理嵌套深度。
 - 未知字段忽略；解析失败只跳过该 profile，并在工具错误里说明。
-- 安装后扩展写一份示例到 `profiles/examples/domain.md`，只在文件缺失时写，不覆盖。加载只看 `profiles/*.md`，所以示例默认不生效，复制一层即用。
+- `name` 缺失、不是字符串或为空白：该 profile 不加载；`run` 返回 `profile_invalid`，按文件名定位。
+- 同一层两个文件同名：两个都不加载，`profile_invalid` 列出两个文件；项目层与全局层同名仍是项目覆盖。
+- 安装后扩展写一份示例到 `profiles/examples/domain.md`，只在文件缺失时写，不覆盖；示例的 `name` 也是 `domain`。加载只看 `profiles/*.md`，所以示例默认不生效，复制一层即用。
 
 ## 3. 工具
 

@@ -11,7 +11,7 @@
 | **身份文件** | `<childSession>.identity.md`；存 profile body（DEC-0051） | 不是任务简报，也不是 session 文件 |
 | **槽位** | `maxConcurrent` 的一个名额；占槽 = run 还在记录里且未结算 | 不是 herdr 的 pane 数 |
 | **live** | 占着槽位、还在轮询的 run / agent | 不是 `agent_status` 的取值 |
-| **profile** | 角色模板；全局与项目各一层 `profiles/*.md`，同名项目覆盖；文件名是 profile 名（路径见契约 §2） | 不是 agent name |
+| **profile** | 角色模板；全局与项目各一层 `profiles/*.md`，frontmatter `name` 是唯一键（必填）；同名项目覆盖，同一层同名全无效（路径见契约 §2） | 不是 agent name |
 | **子代理名** | `<profile>-<n>`，herdr live agent name；run 返回，send 用它 | 不是 profile 名，也不是 pane 标题 |
 | **tab label** | tab 栏文字；v1 等于子代理名 | 不是 agent name 字段 |
 | **pane label** | pane 头文字；v1 是任务第一行 | 不是 tab label |

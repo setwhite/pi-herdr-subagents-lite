@@ -8,7 +8,6 @@ export type SystemPromptMode = (typeof SYSTEM_PROMPT_MODES)[number];
 
 export interface Profile {
   name: string;
-  displayName: string;
   description: string;
   body: string;
   model: string | undefined;
@@ -46,6 +45,24 @@ function typeName(value: unknown): string {
 
 function complain(fields: Fields, field: string, reason: string) {
   fields.problems.push({ name: fields.name, file: fields.file, field, reason });
+}
+
+export function nameField(fields: Fields): string | undefined {
+  const value = fields.raw.name;
+  if (value === undefined) {
+    complain(fields, "name", "required");
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    complain(fields, "name", `expected string, got ${typeName(value)}`);
+    return undefined;
+  }
+  const name = value.trim();
+  if (name === "") {
+    complain(fields, "name", "expected a non-empty name");
+    return undefined;
+  }
+  return name;
 }
 
 export function stringField(fields: Fields, key: string): string | undefined {

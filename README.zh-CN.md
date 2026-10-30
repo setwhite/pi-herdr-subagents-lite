@@ -9,7 +9,7 @@ pi 扩展：让子代理作为独立 pi 进程跑在 herdr pane 里。一个工�
 ## 功能
 
 - **独立进程，可人工接管**：每个子代理是 herdr pane 里独立的 pi 进程。cwd 与父相同则同 workspace 新开 tab，否则新建 workspace。随时切进去接管。
-- **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，同名时项目层覆盖。
+- **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，`name` 相同时项目层覆盖。
 - **异步、可合并的结果**：`run` 立即返回。每个子代理收工时投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
 - **反问留在人这边**：子代理弹出对话框时只发出 `herdr:blocked` 事件，父侧什么也收不到。人在子 pane 里回答，不经模型转达。
 - **默认不嵌套，也不是沙箱**：子代理的工具集默认去掉本工具，profile 里点名才授予。工具由 profile 决定，扩展不限制写操作。
@@ -36,7 +36,7 @@ pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程�
 ## 快速开始
 
 1. 在 herdr pane 里启动 `pi`。
-2. 写一个 profile（下一节）；文件名去掉 `.md` 就是 `run` 的寻址名。
+2. 写一个 profile（下一节）；frontmatter `name` 就是 `run` 的寻址名，文件名不参与查找。
 3. 让模型调用工具：
 
 ```json
@@ -51,12 +51,12 @@ pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程�
 
 ## Profile
 
-全局 profile 在 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 profile 在 `.pi/pi-herdr-subagents-lite/profiles/*.md`（项目受信任后才读）；同名时项目覆盖全局。
+全局 profile 在 `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`，项目 profile 在 `.pi/pi-herdr-subagents-lite/profiles/*.md`（项目受信任后才读）；`name` 相同时项目覆盖全局。
 
 ```markdown
 ---
-# 列表写作「文件名 (显示名)」；run 取文件名
-name: Explore
+# run 的寻址名；建议与文件名保持一致
+name: explore
 description: 只读调研：读代码、回答问题，不改动任何文件
 
 # 省略即继承父会话
@@ -84,9 +84,9 @@ disable-model-invocation: false
 你是一名只读探索者，回答时给出文件路径与行号。
 ```
 
-字段默认值与错误码见 [契约 §2](docs/specs/0001-v1-contract.md#2-profile)。解析失败的文件不进列表；对它 `run` 返回 `profile_invalid`，带文件、字段与原因。
+字段默认值与错误码见 [契约 §2](docs/specs/0001-v1-contract.md#2-profile)。没写 `name`、字段非法或同层同名的文件都不进列表；对它 `run` 返回 `profile_invalid`，带文件、字段与原因。
 
-扩展自带一个示例 profile。加载只读 `profiles/*.md`，示例也只在缺失时写入，所以复制一层上去即可：
+扩展自带一个示例 profile，文件名和 `name` 都是 `domain`。加载只读 `profiles/*.md`，示例也只在缺失时写入，所以复制一层上去即可：
 
 ```bash
 cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md

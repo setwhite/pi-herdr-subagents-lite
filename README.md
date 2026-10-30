@@ -9,7 +9,7 @@ Experimental; compatibility across versions is not promised. Exact behavior live
 ## Features
 
 - **Separate process, human takeover**: each subagent is its own pi process in a herdr pane. Same cwd as the parent opens a tab in the same workspace, otherwise a new workspace. Switch into the pane and take over at any time.
-- **Profile layers**: Markdown + frontmatter under `<agent-dir>/pi-herdr-subagents-lite/profiles/`, plus a project layer under `.pi/pi-herdr-subagents-lite/profiles/` that wins on the same name.
+- **Profile layers**: Markdown + frontmatter under `<agent-dir>/pi-herdr-subagents-lite/profiles/`, plus a project layer under `.pi/pi-herdr-subagents-lite/profiles/` that wins on the same `name`.
 - **Async, merged results**: `run` returns at once. Each finished child reports one `subagent_result` message; results inside `aggregateWindowMs` merge into one. Oversize results go to an artifact file.
 - **Questions stay with the human**: a child prompt marks its pane `herdr:blocked` and nothing goes to the parent. The human answers in the child pane; no model relays the answer.
 - **No nesting by default, no sandbox**: child tool sets drop this tool unless the profile names it. The profile picks tools; the extension does not restrict writes.
@@ -36,7 +36,7 @@ Upgrade with `pi update --extensions`, remove with `pi remove <source>`. After a
 ## Quick start
 
 1. Start `pi` in a herdr pane.
-2. Write a profile (next section); the file name without `.md` is the name `run` takes.
+2. Write a profile (next section); its frontmatter `name` is the key `run` takes. The file name is not used for lookup.
 3. Ask the model to call the tool:
 
 ```json
@@ -51,12 +51,12 @@ It returns `{"state":"running",...}`, runs in its own tab, and a `[subagent expl
 
 ## Profile
 
-Global profiles live in `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`, project profiles in `.pi/pi-herdr-subagents-lite/profiles/*.md` (read once the project is trusted); the project wins on the same name.
+Global profiles live in `<agent-dir>/pi-herdr-subagents-lite/profiles/*.md`, project profiles in `.pi/pi-herdr-subagents-lite/profiles/*.md` (read once the project is trusted); the project wins on the same `name`.
 
 ```markdown
 ---
-# Listed as "file (name)"; run takes the file name
-name: Explore
+# Key run takes; keep it equal to the file name
+name: explore
 description: "Read-only research: read code, answer questions, change nothing"
 
 # Omit to inherit from the parent
@@ -84,9 +84,9 @@ disable-model-invocation: false
 You are a read-only explorer. Answer with file paths and line numbers.
 ```
 
-Defaults and error codes: [contract section 2](docs/specs/0001-v1-contract.md#2-profile). A file that fails to parse stays out of the list; `run` returns `profile_invalid` with the file, field and reason.
+Defaults and error codes: [contract section 2](docs/specs/0001-v1-contract.md#2-profile). A file without `name`, or with an invalid field, stays out of the list; duplicate names in one layer are all rejected. `run` returns `profile_invalid` with the file, field and reason.
 
-A bundled example ships with the extension. Loading reads `profiles/*.md` only and the example is written only when missing, so copy it one level up:
+A bundled example ships with the extension; its file name and `name` are both `domain`. Loading reads `profiles/*.md` only and the example is written only when missing, so copy it one level up:
 
 ```bash
 cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md

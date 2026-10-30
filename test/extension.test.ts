@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadConfig, type ShutdownReason } from "../src/config/index.ts";
@@ -302,10 +302,22 @@ function writeConfig(value: unknown) {
   writeFileSync(configFile(), JSON.stringify(merged));
 }
 
+function withProfileName(fileName: string, content: string): string {
+  const name = basename(fileName, ".md");
+  if (!content.startsWith("---\n")) {
+    return `---\nname: ${name}\n---\n\n${content}`;
+  }
+  const lines = content.split("\n");
+  if (lines.some((line) => line.startsWith("name:"))) {
+    return content;
+  }
+  return [lines[0], `name: ${name}`, ...lines.slice(1)].join("\n");
+}
+
 function writeProfile(fileName: string, content: string) {
   const file = join(agentDir, "pi-herdr-subagents-lite", "profiles", fileName);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content);
+  writeFileSync(file, withProfileName(fileName, content));
 }
 
 function sessionsRoot(): string {
@@ -315,7 +327,7 @@ function sessionsRoot(): string {
 function writeProjectProfile(fileName: string, content: string) {
   const file = join(projectDir, ".pi", "pi-herdr-subagents-lite", "profiles", fileName);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content);
+  writeFileSync(file, withProfileName(fileName, content));
 }
 
 function registerExtension(pi: ExtensionRegistrar, host: HerdrHost) {
@@ -1103,8 +1115,18 @@ it("lists profiles on unknown profile", async () => {
 
   expect(result.isError).toBe(true);
   expect(result.details).toMatchObject({ code: "unknown_profile" });
-  expect(firstText(result)).toContain("explore (Inspector) — Explore the repo");
+  expect(firstText(result)).toContain("Inspector — Explore the repo");
   expect(calls).toEqual([]);
+});
+
+it("runs a profile by its frontmatter name", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("explore.md", "---\nname: Inspector\ndescription: Explore the repo\n---\n\nExplore body.\n");
+  const tool = loadTool(fakeHost().host);
+
+  const started = parseStarted(await runTask(tool, "inspect the repo", "Inspector"));
+
+  expect(started.name).toBe("inspector-1");
 });
 
 it("reports invalid profile", async () => {
@@ -1232,7 +1254,8 @@ it("expands profiles in guidelines", () => {
 
   writeProfile("named.md", "---\nname: Explorer\ndescription: Named profile\n---\n\nNamed body.\n");
   const named = loadSession(fakeHost().host);
-  expect(named.tool.promptGuidelines?.join("\n")).toContain("named (Explorer) — Named profile");
+  expect(named.tool.promptGuidelines?.join("\n")).toContain("Explorer — Named profile");
+  expect(named.tool.promptGuidelines?.join("\n")).not.toContain("named (Explorer)");
 
   writeConfig({ prompts: { guidelines: ["Use {{toolName}}"] } });
   const overridden = loadSession(fakeHost().host);
