@@ -1,12 +1,6 @@
-export interface ToolCall {
-  name: string;
-  arguments: unknown;
-}
-
 export interface SessionSnapshot {
   text: string | null;
   pendingToolCall: boolean;
-  toolCall?: ToolCall;
   empty: boolean;
 }
 
@@ -26,21 +20,17 @@ function isTextBlock(block: unknown): block is { type: "text"; text: string } {
   return candidate.type === "text" && typeof candidate.text === "string";
 }
 
-function lastToolCall(content: unknown): ToolCall | undefined {
+function hasToolCall(content: unknown): boolean {
   if (!Array.isArray(content)) {
-    return undefined;
+    return false;
   }
-  for (let index = content.length - 1; index >= 0; index--) {
-    const block = content[index];
+  return content.some((block) => {
     if (typeof block !== "object" || block === null) {
-      continue;
+      return false;
     }
-    const candidate = block as { type?: unknown; name?: unknown; arguments?: unknown };
-    if (candidate.type === "toolCall" && typeof candidate.name === "string") {
-      return { name: candidate.name, arguments: candidate.arguments };
-    }
-  }
-  return undefined;
+    const candidate = block as { type?: unknown; name?: unknown };
+    return candidate.type === "toolCall" && typeof candidate.name === "string";
+  });
 }
 
 function textOf(entry: SessionEntry): string | null {
@@ -77,10 +67,7 @@ export function parseLastAssistant(raw: string): SessionSnapshot {
     if (entry.type !== "message" || entry.message?.role !== "assistant") {
       continue;
     }
-    const toolCall = lastToolCall(entry.message?.content);
-    return toolCall === undefined
-      ? { text: textOf(entry), pendingToolCall: false, empty: false }
-      : { text: textOf(entry), pendingToolCall: true, toolCall, empty: false };
+    return { text: textOf(entry), pendingToolCall: hasToolCall(entry.message?.content), empty: false };
   }
   return { text: null, pendingToolCall: false, empty: true };
 }

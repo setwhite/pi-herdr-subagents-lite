@@ -16,15 +16,10 @@ function message(role: string, content: unknown[]): string {
   return JSON.stringify({ type: "message", message: { role, content } });
 }
 
-interface ToolCall {
-  name: string;
-  arguments: unknown;
-}
-
 interface SessionCase {
   name: string;
   lines?: string[];
-  expected: { text: string | null; pendingToolCall: boolean; toolCall?: ToolCall; empty: boolean };
+  expected: { text: string | null; pendingToolCall: boolean; empty: boolean };
 }
 
 const cases: SessionCase[] = [
@@ -81,7 +76,6 @@ const cases: SessionCase[] = [
     expected: {
       text: "Need a decision.",
       pendingToolCall: true,
-      toolCall: { name: "ask_user_question", arguments: {} },
       empty: false,
     },
   },
@@ -91,41 +85,6 @@ const cases: SessionCase[] = [
     expected: {
       text: null,
       pendingToolCall: true,
-      toolCall: { name: "ask_user_question", arguments: {} },
-      empty: false,
-    },
-  },
-  {
-    name: "returns the pending tool call arguments",
-    lines: [
-      message("assistant", [
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "ask_user_question",
-          arguments: { questions: [{ question: "Continue?" }] },
-        },
-      ]),
-    ],
-    expected: {
-      text: null,
-      pendingToolCall: true,
-      toolCall: { name: "ask_user_question", arguments: { questions: [{ question: "Continue?" }] } },
-      empty: false,
-    },
-  },
-  {
-    name: "returns the last tool call of the message",
-    lines: [
-      message("assistant", [
-        { type: "toolCall", id: "call-1", name: "bash", arguments: { command: "ls" } },
-        { type: "toolCall", id: "call-2", name: "edit", arguments: { path: "a.ts" } },
-      ]),
-    ],
-    expected: {
-      text: null,
-      pendingToolCall: true,
-      toolCall: { name: "edit", arguments: { path: "a.ts" } },
       empty: false,
     },
   },
