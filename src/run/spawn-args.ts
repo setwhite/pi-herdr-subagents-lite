@@ -16,6 +16,20 @@ export function resolveCwd(raw: string | undefined): string {
   return resolve(parentCwd(), expanded);
 }
 
+function toolSelection(profile: Profile, toolName: string): string[] {
+  if (profile.tools === undefined) {
+    return ["--exclude-tools", toolName];
+  }
+  if (profile.tools === "") {
+    return ["--no-tools"];
+  }
+  const entries = profile.tools.split(",").map((entry) => entry.trim());
+  const modifierList = entries.every((entry) => entry.startsWith("+") || entry.startsWith("-"));
+  return modifierList && !entries.includes(`+${toolName}`)
+    ? ["--tools", profile.tools, "--exclude-tools", toolName]
+    : ["--tools", profile.tools];
+}
+
 export function agentArgs(
   profile: Profile,
   identityFile: string,
@@ -29,11 +43,7 @@ export function agentArgs(
   if (profile.thinking !== undefined) {
     args.push("--thinking", profile.thinking);
   }
-  if (profile.tools === undefined) {
-    args.push("--tools", `-${toolName}`);
-  } else {
-    args.push(...(profile.tools === "" ? ["--no-tools"] : ["--tools", profile.tools]));
-  }
+  args.push(...toolSelection(profile, toolName));
   if (skillPaths !== undefined) {
     args.push("--no-skills");
     for (const file of skillPaths) {

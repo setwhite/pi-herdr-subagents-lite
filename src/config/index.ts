@@ -41,6 +41,7 @@ export interface Config {
   closeChildrenOn: ShutdownReason[];
   inboxPollMs: number;
   pollIntervalMs: number;
+  idlePollIntervalMs: number;
   prompts: PromptOverrides;
   bridge: { enabled: boolean; blockedOn: BlockedKind[] };
 }
@@ -77,6 +78,7 @@ function parse(raw: Raw, file: string): Config {
     closeChildrenOn: enumList(top, "closeChildrenOn", SHUTDOWN_REASONS, []),
     inboxPollMs: integer(top, "inboxPollMs", 250, 50, 5000),
     pollIntervalMs: integer(top, "pollIntervalMs", 1000, 100, 60000),
+    idlePollIntervalMs: integer(top, "idlePollIntervalMs", 8000, 100, 60000),
     prompts: promptOverrides(top),
     bridge: {
       enabled: boolean(bridge, "enabled", true),

@@ -15,9 +15,10 @@ export interface CreateTabInput {
 export interface CreateWorkspaceInput {
   cwd: string;
   label: string;
+  env: Record<string, string>;
 }
 
-export interface CreatedWorkspace {
+export interface CreatedWorkspace extends CreatedTab {
   workspaceId: string;
 }
 
@@ -59,17 +60,22 @@ interface PaneInfo {
 
 export function createPaneCommands(exec: ExecHerdr) {
   return {
-    async createWorkspace({ cwd, label }: CreateWorkspaceInput): Promise<CreatedWorkspace> {
-      const result = await exec<{ workspace: WorkspaceInfo }>([
+    async createWorkspace({ cwd, label, env }: CreateWorkspaceInput): Promise<CreatedWorkspace> {
+      const result = await exec<{ workspace: WorkspaceInfo; tab: TabInfo; root_pane: PaneInfo }>([
         "workspace",
         "create",
         "--cwd",
         cwd,
         "--label",
         label,
+        ...envArgs(env),
         "--no-focus",
       ]);
-      return { workspaceId: result.workspace.workspace_id };
+      return {
+        workspaceId: result.workspace.workspace_id,
+        tabId: result.tab.tab_id,
+        paneId: result.root_pane.pane_id,
+      };
     },
 
     async createTab({ cwd, label, env, workspaceId }: CreateTabInput): Promise<CreatedTab> {

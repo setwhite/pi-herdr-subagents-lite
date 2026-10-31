@@ -2,6 +2,7 @@ export interface SessionSnapshot {
   text: string | null;
   pendingToolCall: boolean;
   empty: boolean;
+  unreadable: boolean;
 }
 
 interface SessionEntry {
@@ -67,7 +68,12 @@ export function parseLastAssistant(raw: string): SessionSnapshot {
     if (entry.type !== "message" || entry.message?.role !== "assistant") {
       continue;
     }
-    return { text: textOf(entry), pendingToolCall: hasToolCall(entry.message?.content), empty: false };
+    return {
+      text: textOf(entry),
+      pendingToolCall: hasToolCall(entry.message?.content),
+      empty: false,
+      unreadable: false,
+    };
   }
-  return { text: null, pendingToolCall: false, empty: true };
+  return { text: null, pendingToolCall: false, empty: true, unreadable: false };
 }

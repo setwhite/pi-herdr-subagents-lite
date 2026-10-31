@@ -1,3 +1,4 @@
+import { errorText } from "../error/index.ts";
 import { type Profile, type ProfileCatalog, resolveSkillPaths } from "../profile/index.ts";
 import { ToolError } from "./errors.ts";
 
@@ -12,7 +13,7 @@ export async function resolveSkills(profile: Profile, cwd: string, trusted: bool
   try {
     return await resolveSkillPaths(profile.skills, cwd, trusted);
   } catch (error) {
-    throw new ToolError("profile_invalid", error instanceof Error ? error.message : String(error));
+    throw new ToolError("profile_invalid", errorText(error));
   }
 }
 

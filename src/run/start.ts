@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { HerdrHostError } from "../herdr/index.ts";
-import { createInbox, removeInbox } from "../inbox/index.ts";
+import { createInbox, enqueue, removeInbox } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
 import { paneLabel } from "./naming.ts";
-import { ensurePoll } from "./poll.ts";
+import { createPane } from "./pane.ts";
+import { wake } from "./poll.ts";
 import { resolveProfile, resolveSkills } from "./resolve.ts";
-import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, resolveCwd } from "./spawn-args.ts";
+import { requireSlot } from "./slot.ts";
+import { agentArgs, briefText, resolveCwd } from "./spawn-args.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
 const NAME_ATTEMPTS = 100;
@@ -19,31 +21,24 @@ export interface RunStarted {
   sessionFile: string;
 }
 
-function samePath(left: string, right: string): boolean {
-  return relative(left, right) === "";
+function cancelled(): ToolError {
+  return new ToolError("spawn_failed", "the session is shutting down; the run was cancelled");
 }
 
-export async function createPane(state: RunState, run: RunRecord, cwd: string, label: string): Promise<void> {
-  const workspaceId = samePath(cwd, parentCwd())
-    ? undefined
-    : (await state.host.createWorkspace({ cwd, label: run.name })).workspaceId;
-  const tab = await state.host.createTab({
-    cwd,
-    label: run.name,
-    workspaceId,
-    env: { [AUTO_EXIT_ENV]: run.autoExit ? "1" : "0" },
-  });
-  run.tabId = tab.tabId;
-  run.paneId = tab.paneId;
-  await state.host.renamePane({ paneId: tab.paneId, label });
+export function start(state: RunState, profileName: string, task: string, rawCwd?: string): Promise<RunStarted> {
+  const work = launch(state, profileName, task, rawCwd);
+  state.pending.add(work);
+  const settle = () => state.pending.delete(work);
+  work.then(settle, settle);
+  return work;
 }
 
-export async function start(state: RunState, profileName: string, task: string, rawCwd?: string): Promise<RunStarted> {
-  const profile = resolveProfile(state.loadProfiles(), profileName);
-  if (state.active().length >= state.maxConcurrent) {
-    const names = state.active().join(", ");
-    throw new ToolError("max_concurrent", `at max concurrency; running: ${names}`);
+async function launch(state: RunState, profileName: string, task: string, rawCwd?: string): Promise<RunStarted> {
+  if (state.stopped) {
+    throw cancelled();
   }
+  const profile = resolveProfile(state.loadProfiles(), profileName);
+  requireSlot(state);
 
   const runId = randomUUID();
   const files = (name: string) => {
@@ -60,11 +55,10 @@ export async function start(state: RunState, profileName: string, task: string, 
   const run: RunRecord = {
     name,
     profileName: profile.name,
-    paneId: "",
+    pane: undefined,
     paneLabel: "",
     sessionFile: current.sessionFile,
     cwd,
-    tabId: "",
     autoExit: profile.autoExit,
     lastHandledSeq: 0,
     lastDeliveredText: null,
@@ -78,10 +72,13 @@ export async function start(state: RunState, profileName: string, task: string, 
   try {
     const skillPaths = await resolveSkills(profile, cwd, state.trusted);
     run.paneLabel = paneLabel(task) || run.name;
-    await createPane(state, run, cwd, run.paneLabel);
+    run.pane = await createPane(state, run, cwd, run.paneLabel);
     await mkdir(state.sessionsDir, { recursive: true });
 
     for (let retry = 1; ; retry++) {
+      if (state.stopped) {
+        throw cancelled();
+      }
       await writeFile(current.briefFile, briefText(profile, task), "utf8");
       if (profile.systemPrompt !== "task") {
         await writeFile(current.identityFile, profile.body, "utf8");
@@ -90,11 +87,12 @@ export async function start(state: RunState, profileName: string, task: string, 
       try {
         await state.host.startAgent({
           name: run.name,
-          paneId: run.paneId,
+          paneId: run.pane.paneId,
           sessionFile: current.sessionFile,
-          briefFile: current.briefFile,
           agentArgs: agentArgs(profile, current.identityFile, state.toolName, skillPaths),
         });
+        // `agent start` 等到 idle 才算就绪，先入队会让第一轮抢跑并把它拖到超时（DEC-0023）。
+        enqueue(current.sessionFile, `@${current.briefFile}`);
         break;
       } catch (error) {
         if (!(error instanceof HerdrHostError && error.code === "name_taken")) {
@@ -112,25 +110,30 @@ export async function start(state: RunState, profileName: string, task: string, 
           );
         }
         run.name = state.nextName(profileName);
-        await state.host.renameTab({ tabId: run.tabId, label: run.name });
+        await state.host.renameTab({ tabId: run.pane.tabId, label: run.name });
         current = files(run.name);
         run.sessionFile = current.sessionFile;
       }
     }
 
-    ensurePoll(state);
+    wake(state);
 
     return {
       state: "running",
       name: run.name,
-      paneId: run.paneId,
+      paneId: run.pane.paneId,
       sessionFile: run.sessionFile,
     };
   } catch (error) {
+    const pane = run.pane;
     state.release(run);
+    if (state.stopped && pane) {
+      // 清理失败不改变结论：会话已在关闭，run 已被取消。
+      await state.host.closeTabIfOnlyPane(pane).catch(() => "missing");
+    }
     if (error instanceof ToolError) {
       throw error;
     }
-    throw spawnFailed(error, run.paneId || undefined);
+    throw spawnFailed(error, pane?.paneId);
   }
 }

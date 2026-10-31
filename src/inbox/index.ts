@@ -3,7 +3,6 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, wri
 import { join } from "node:path";
 
 const MESSAGE_SUFFIX = ".md";
-const DELIVERED_DIR = ".delivered";
 
 function inboxDir(sessionFile: string): string {
   return `${sessionFile}.inbox`;
@@ -56,18 +55,12 @@ export function enqueue(sessionFile: string, text: string): void {
 
 export function drain(sessionFile: string, deliver: (text: string) => void): number {
   const dir = inboxDir(sessionFile);
-  const names = pendingNames(dir);
-  if (names.length === 0) {
-    return 0;
-  }
-
-  const deliveredDir = join(dir, DELIVERED_DIR);
-  mkdirSync(deliveredDir, { recursive: true });
   let delivered = 0;
-  for (const name of names) {
-    const text = readFileSync(join(dir, name), "utf8");
+  for (const name of pendingNames(dir)) {
+    const path = join(dir, name);
+    const text = readFileSync(path, "utf8");
     deliver(text);
-    renameSync(join(dir, name), join(deliveredDir, name));
+    rmSync(path, { force: true });
     delivered += 1;
   }
   return delivered;

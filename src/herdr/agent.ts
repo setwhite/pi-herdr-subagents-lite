@@ -17,10 +17,7 @@ export interface StartAgentInput {
   paneId: string;
   sessionFile: string;
   agentArgs: string[];
-  briefFile: string;
 }
-
-export type ResumeAgentInput = Omit<StartAgentInput, "briefFile">;
 
 interface AgentInfo {
   agent_status: AgentStatus;
@@ -30,7 +27,7 @@ interface AgentInfo {
   pane_id: string;
 }
 
-function agentStartCommand(input: ResumeAgentInput): string[] {
+function agentStartCommand(input: StartAgentInput): string[] {
   return [
     "agent",
     "start",
@@ -50,12 +47,7 @@ function agentStartCommand(input: ResumeAgentInput): string[] {
 
 export function createAgentCommands(exec: ExecHerdr) {
   return {
-    async startAgent({ name, briefFile, ...input }: StartAgentInput) {
-      await exec(agentStartCommand({ name, ...input }));
-      await exec(["agent", "prompt", name, `@${briefFile}`]);
-    },
-
-    async resumeAgent(input: ResumeAgentInput) {
+    async startAgent(input: StartAgentInput) {
       await exec(agentStartCommand(input));
     },
 

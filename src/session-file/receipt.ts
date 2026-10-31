@@ -8,18 +8,32 @@ export type ExitReceiptReader = (sessionFile: string) => ExitReceipt | null;
 
 export type ExitReceiptWriter = (sessionFile: string, reason: string) => void;
 
+function receiptFile(sessionFile: string): string {
+  return `${sessionFile}.exit`;
+}
+
 export const readExitReceipt: ExitReceiptReader = (sessionFile) => {
+  let raw: string;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(`${sessionFile}.exit`, "utf8"));
-    if (typeof parsed !== "object" || parsed === null || !("reason" in parsed) || typeof parsed.reason !== "string") {
+    raw = readFileSync(receiptFile(sessionFile), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
     }
-    return { reason: parsed.reason };
+    throw error;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (typeof parsed !== "object" || parsed === null || !("reason" in parsed) || typeof parsed.reason !== "string") {
+    return null;
+  }
+  return { reason: parsed.reason };
 };
 
 export const writeExitReceipt: ExitReceiptWriter = (sessionFile, reason) => {
-  writeFileSync(`${sessionFile}.exit`, JSON.stringify({ reason }));
+  writeFileSync(receiptFile(sessionFile), JSON.stringify({ reason }));
 };

@@ -38,6 +38,10 @@ export function createRunService(deps: RunServiceDeps): RunService {
     ...deps,
     sessionsDir: join(dataDir(agentDir()), "sessions"),
     runs: [],
+    pending: new Set(),
+    stopped: false,
+    activeUntil: 0,
+    now: deps.now ?? Date.now,
     resultHandler: undefined,
     results: undefined,
     pollBusy: false,
@@ -48,15 +52,9 @@ export function createRunService(deps: RunServiceDeps): RunService {
     available() {
       return state.runs.map((run) => run.name);
     },
-    clearTimer(run) {
-      if (run.timer !== undefined) {
-        clearTimeout(run.timer);
-        run.timer = undefined;
-      }
-    },
     settle(run) {
       run.live = false;
-      state.clearTimer(run);
+      run.read = undefined;
     },
     release(run) {
       state.settle(run);
@@ -64,13 +62,6 @@ export function createRunService(deps: RunServiceDeps): RunService {
       if (index >= 0) {
         state.runs.splice(index, 1);
       }
-    },
-    schedule(run, delayMs, task) {
-      if (!run.live) {
-        return;
-      }
-      run.timer = setTimeout(task, delayMs);
-      run.timer.unref?.();
     },
   };
   state.results = createAggregator<RunResult>({
@@ -86,12 +77,17 @@ export function createRunService(deps: RunServiceDeps): RunService {
       state.resultHandler = handler;
     },
     shutdown() {
+      state.stopped = true;
       stopService(state);
       takeRuns(state);
     },
-    closeChildren() {
+    async closeChildren() {
+      state.stopped = true;
       stopService(state);
-      return closeRuns(state, takeRuns(state));
+      await Promise.allSettled([...state.pending]);
+      const runs = takeRuns(state);
+      stopService(state);
+      return closeRuns(state, runs);
     },
     active: () => state.active(),
   };

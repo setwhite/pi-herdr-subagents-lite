@@ -1,6 +1,7 @@
 import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { createBridge } from "../bridge/index.ts";
 import type { BlockedKind, Config } from "../config/index.ts";
+import { errorText } from "../error/index.ts";
 import type { HerdrHost } from "../herdr/index.ts";
 import { drain, hasInbox, pumpInbox } from "../inbox/index.ts";
 import type { ProfileCatalog, ProfileSources } from "../profile/index.ts";
@@ -29,10 +30,6 @@ export interface SessionContext {
 }
 
 export type { SubagentTool };
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 type SessionStartHandler = (event: SessionStartEvent, ctx: SessionContext) => void;
 type SettledHandler = (event: { type: "agent_settled" }, ctx: SessionContext) => void;
@@ -117,6 +114,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         maxResultChars: config.maxResultChars,
         aggregateWindowMs: config.aggregateWindowMs,
         pollIntervalMs: config.pollIntervalMs,
+        idlePollIntervalMs: config.idlePollIntervalMs,
         toolName: config.toolName,
         onDeliveryError: (error) => ctx.ui.notify(`subagent result not delivered: ${errorText(error)}`, "error"),
       });

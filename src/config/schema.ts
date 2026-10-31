@@ -8,6 +8,7 @@ export const CONFIG_KEYS = [
   "closeChildrenOn",
   "inboxPollMs",
   "pollIntervalMs",
+  "idlePollIntervalMs",
   "prompts",
   "bridge",
 ];

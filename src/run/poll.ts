@@ -1,23 +1,15 @@
 import type { AgentEntry } from "../herdr/index.ts";
-import { closeTab, shouldClose } from "./close.ts";
 import { findAgent } from "./find.ts";
-import type { RunResult } from "./result.ts";
-import { doneResult, unknownResult } from "./result.ts";
+import { exited, readResult, recordFailure } from "./poll-result.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
-const POLL_FAILURE_LIMIT = 3;
-const READ_ATTEMPTS = 3;
-const READ_RETRY_DELAY_MS = 200;
+const ACTIVITY_WINDOW_MS = 30_000;
+const BUSY_STATUSES = new Set(["working", "blocked", "unknown"]);
 
-export function ensurePoll(state: RunState): void {
-  if (state.pollTimer !== undefined || state.pollBusy) {
-    return;
-  }
-  if (!state.runs.some((run) => run.live)) {
-    return;
-  }
-  state.pollTimer = setTimeout(() => void tick(state), state.pollIntervalMs);
-  state.pollTimer.unref?.();
+// 不排 0 延迟：启动瞬间 agent 可能还没进 agent list，会被误判成 pane 已退出。
+export function wake(state: RunState): void {
+  state.activeUntil = state.now() + ACTIVITY_WINDOW_MS;
+  reschedule(state, state.pollIntervalMs);
 }
 
 export function stopPoll(state: RunState): void {
@@ -27,113 +19,92 @@ export function stopPoll(state: RunState): void {
   }
 }
 
+function reschedule(state: RunState, delayMs: number): void {
+  stopPoll(state);
+  if (state.stopped) {
+    return;
+  }
+  state.pollTimer = setTimeout(() => void tick(state), delayMs);
+  state.pollTimer.unref?.();
+}
+
+function plan(state: RunState, agents: AgentEntry[]): number | undefined {
+  const live = state.runs.filter((run) => run.live);
+  if (live.length === 0) {
+    return undefined;
+  }
+  const now = state.now();
+  let soonest: number | undefined;
+  for (const run of live) {
+    if (run.read === undefined) {
+      continue;
+    }
+    const delay = Math.max(0, run.read.at - now);
+    soonest = soonest === undefined ? delay : Math.min(soonest, delay);
+  }
+  if (soonest !== undefined) {
+    return soonest;
+  }
+  const busy =
+    now < state.activeUntil || live.some((run) => BUSY_STATUSES.has(findAgent(agents, run)?.status ?? "unknown"));
+  return busy ? state.pollIntervalMs : state.idlePollIntervalMs;
+}
+
 async function tick(state: RunState): Promise<void> {
   state.pollTimer = undefined;
   state.pollBusy = true;
+  let agents: AgentEntry[] = [];
   try {
-    await pollRuns(state);
+    agents = await pollRuns(state);
   } catch {
-    // 同步投递失败时 finish 已结算该 run；其余 run 下一拍继续。
+    // 单个 run 的投递失败不会中断其余 run；下一拍继续。
   } finally {
     state.pollBusy = false;
-    ensurePoll(state);
+    const delay = plan(state, agents);
+    if (delay !== undefined) {
+      reschedule(state, delay);
+    }
   }
 }
 
-async function pollRuns(state: RunState): Promise<void> {
+async function pollRun(state: RunState, agents: AgentEntry[], run: RunRecord): Promise<void> {
+  const agent = findAgent(agents, run);
+  if (!agent) {
+    await exited(state, run);
+    return;
+  }
+  run.pollFailures = 0;
+  if (run.read !== undefined) {
+    if (state.now() < run.read.at) {
+      return;
+    }
+    await readResult(state, run, Math.max(run.read.seq, agent.completionSeq), run.read.attempt + 1);
+    return;
+  }
+  if (agent.completionSeq > run.lastHandledSeq && (agent.status === "idle" || agent.status === "done")) {
+    await readResult(state, run, agent.completionSeq, 1);
+  }
+}
+
+async function pollRuns(state: RunState): Promise<AgentEntry[]> {
   let agents: AgentEntry[];
   try {
     agents = await state.host.listAgents();
   } catch {
     for (const run of [...state.runs]) {
-      if (!run.live) {
-        continue;
-      }
-      run.pollFailures += 1;
-      if (run.pollFailures >= POLL_FAILURE_LIMIT) {
-        await finish(state, run, unknownResult(run, "poll_failed"));
-      }
+      await recordFailure(state, run);
     }
-    return;
+    return [];
   }
   for (const run of [...state.runs]) {
-    if (!run.live || run.timer !== undefined) {
+    if (!run.live) {
       continue;
     }
-    const agent = findAgent(agents, run);
-    if (!agent) {
-      await exited(state, run);
-      continue;
-    }
-    run.pollFailures = 0;
-    if (agent.completionSeq > run.lastHandledSeq && (agent.status === "idle" || agent.status === "done")) {
-      await readResult(state, run, agent.completionSeq, 1);
-    }
-  }
-}
-
-async function readResult(state: RunState, run: RunRecord, seq: number, attempt: number) {
-  run.timer = undefined;
-  if (!run.live) {
-    return;
-  }
-
-  const snapshot = state.readLastAssistant(run.sessionFile);
-  if (snapshot.pendingToolCall || snapshot.empty) {
-    ensurePoll(state);
-    return;
-  }
-  if (snapshot.text !== null) {
-    run.lastHandledSeq = seq;
-    run.lastDeliveredText = snapshot.text;
-    await finish(state, run, doneResult(run, snapshot.text, state.maxResultChars));
-    return;
-  }
-
-  if (attempt >= READ_ATTEMPTS) {
-    run.lastHandledSeq = seq;
-    await finish(state, run, unknownResult(run, "no_result"));
-    return;
-  }
-
-  state.schedule(run, READ_RETRY_DELAY_MS, () => void readResult(state, run, seq, attempt + 1));
-}
-
-async function exited(state: RunState, run: RunRecord): Promise<void> {
-  if (!run.live) {
-    return;
-  }
-  const tail = state.readLastAssistant(run.sessionFile);
-  const text = tail.pendingToolCall ? null : tail.text;
-  if (text !== null) {
-    if (text !== run.lastDeliveredText) {
-      run.lastDeliveredText = text;
-      await finish(state, run, doneResult(run, text, state.maxResultChars));
-    }
-  } else if (run.lastDeliveredText === null) {
-    const reason = state.readExitReceipt(run.sessionFile) ? "quitted" : "pane_exited";
-    await finish(state, run, unknownResult(run, reason));
-  }
-  state.settle(run);
-}
-
-async function finish(state: RunState, run: RunRecord, result: RunResult): Promise<void> {
-  try {
-    await state.results?.push(result);
-  } catch (error) {
-    state.settle(run);
-    throw error;
-  }
-  if (shouldClose(run, result)) {
     try {
-      await closeTab(state, run);
+      await pollRun(state, agents, run);
     } catch {
-      await state.results?.push(unknownResult(run, "close_failed"));
+      await recordFailure(state, run);
     }
-    state.settle(run);
-    return;
   }
-  if (result.state !== "done") {
-    state.settle(run);
-  }
+  return agents;
 }

@@ -1,5 +1,5 @@
 export interface Aggregator<T> {
-  push(item: T): void | Promise<void>;
+  push(item: T): Promise<void>;
   stop(): void;
 }
 
@@ -15,7 +15,11 @@ export function createAggregator<T>({ windowMs, deliver, onError }: AggregatorOp
   let stopped = false;
 
   const send = async (items: T[]) => {
-    await deliver(items);
+    try {
+      await deliver(items);
+    } catch (error) {
+      onError(error);
+    }
   };
 
   const flush = () => {
@@ -25,13 +29,13 @@ export function createAggregator<T>({ windowMs, deliver, onError }: AggregatorOp
     }
     const items = pending;
     pending = [];
-    void send(items).catch(onError);
+    void send(items);
   };
 
   return {
     push(item) {
       if (stopped) {
-        return;
+        return Promise.resolve();
       }
       if (windowMs === 0) {
         return send([item]);
@@ -41,6 +45,7 @@ export function createAggregator<T>({ windowMs, deliver, onError }: AggregatorOp
         timer = setTimeout(flush, windowMs);
         timer.unref?.();
       }
+      return Promise.resolve();
     },
     stop() {
       stopped = true;

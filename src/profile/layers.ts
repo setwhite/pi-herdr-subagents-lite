@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { dataDir, isRaw } from "../config/index.ts";
-import { EXAMPLE_PROFILE, EXAMPLE_PROFILE_FILE } from "./examples.ts";
+import { errorText } from "../error/index.ts";
 import {
   booleanField,
   enumField,
@@ -33,8 +33,7 @@ function parseProfile(file: string, source: string): { profile?: Profile; proble
   try {
     ({ frontmatter, body } = parseFrontmatter(source));
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "parse failed";
-    return { problems: [{ name: basename(file, ".md"), file, field: "frontmatter", reason }] };
+    return { problems: [{ name: basename(file, ".md"), file, field: "frontmatter", reason: errorText(error) }] };
   }
   if (!isRaw(frontmatter)) {
     return { problems: [{ name: basename(file, ".md"), file, field: "frontmatter", reason: "expected a mapping" }] };
@@ -81,8 +80,7 @@ function readProfilesDir(dir: string): ProfileCatalog {
     try {
       source = readFileSync(file, "utf8");
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "unreadable";
-      problems.push({ name: basename(entry, ".md"), file, field: "file", reason });
+      problems.push({ name: basename(entry, ".md"), file, field: "file", reason: errorText(error) });
       continue;
     }
     const result = parseProfile(file, source);
@@ -125,16 +123,6 @@ function readProfilesDir(dir: string): ProfileCatalog {
 
 export function globalProfilesDir(): string {
   return join(dataDir(getAgentDir()), "profiles");
-}
-
-export function seedExampleProfile(profilesDir: string): void {
-  const dir = join(profilesDir, "examples");
-  const file = join(dir, EXAMPLE_PROFILE_FILE);
-  if (existsSync(file)) {
-    return;
-  }
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(file, EXAMPLE_PROFILE);
 }
 
 export function loadProfiles({ cwd, trusted }: ProfileSources): ProfileCatalog {

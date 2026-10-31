@@ -1,12 +1,14 @@
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInbox, enqueue } from "../inbox/index.ts";
+import { closeTab } from "./close.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
 import { findAgent } from "./find.ts";
-import { ensurePoll } from "./poll.ts";
+import { createPane } from "./pane.ts";
+import { wake } from "./poll.ts";
 import { resolveProfile, resolveSkills } from "./resolve.ts";
+import { requireSlot } from "./slot.ts";
 import { agentArgs } from "./spawn-args.ts";
-import { createPane } from "./start.ts";
 import type { RunState } from "./state.ts";
 
 export interface SentResult {
@@ -33,15 +35,19 @@ export async function send(state: RunState, name: string, message: string): Prom
     const list = names.length === 0 ? "none" : names.join(", ");
     throw new ToolError("unknown_agent", `unknown agent "${name}"; available: ${list}`);
   }
+  if (state.stopped) {
+    throw new ToolError("spawn_failed", "the session is shutting down");
+  }
 
   const agent = findAgent(await state.host.listAgents(), run);
   if (agent) {
     if (!run.live) {
+      requireSlot(state);
       run.lastHandledSeq = agent.completionSeq;
       run.live = true;
       run.pollFailures = 0;
-      ensurePoll(state);
     }
+    wake(state);
     await enqueue(run.sessionFile, inboxMessage(message));
     return { state: "sent", name };
   }
@@ -49,7 +55,11 @@ export async function send(state: RunState, name: string, message: string): Prom
   if (!existsSync(run.sessionFile)) {
     throw new ToolError("session_missing", `child session "${run.sessionFile}" is missing; start a new run`);
   }
-  if (state.readLastAssistant(run.sessionFile).pendingToolCall) {
+  const tail = state.readLastAssistant(run.sessionFile);
+  if (tail.unreadable) {
+    throw new ToolError("session_unreadable", `child session "${run.sessionFile}" cannot be read; start a new run`);
+  }
+  if (tail.pendingToolCall) {
     throw new ToolError(
       "tail_dirty",
       `"${name}" cannot restart: its session ends with an unfinished tool call. Wait for the child to finish, or start a new run.`,
@@ -57,28 +67,39 @@ export async function send(state: RunState, name: string, message: string): Prom
   }
 
   const profile = resolveProfile(state.loadProfiles(), run.profileName);
-  run.autoExit = profile.autoExit;
+  requireSlot(state);
   const cwd = run.cwd;
   const skillPaths = await resolveSkills(profile, cwd, state.trusted);
   const identityFile = `${run.sessionFile}.identity.md`;
-  const previousPaneId = run.paneId;
-  try {
-    if (!(await state.host.hasPane(run.paneId))) {
-      await createPane(state, run, cwd, run.paneLabel || run.name);
+  const previousPaneId = run.pane?.paneId;
+  const envChanged = run.autoExit !== profile.autoExit;
+  run.autoExit = profile.autoExit;
+
+  if (run.pane) {
+    const paneAlive = await state.host.hasPane(run.pane.paneId);
+    if (!paneAlive) {
+      run.pane = undefined;
+    } else if (envChanged) {
+      try {
+        await closeTab(state, run);
+      } catch (error) {
+        throw spawnFailed(error, previousPaneId, false);
+      }
+      run.pane = undefined;
     }
+  }
+
+  run.read = undefined;
+  try {
+    const pane = run.pane ?? (await createPane(state, run, cwd, run.paneLabel || run.name));
+    run.pane = pane;
     if (profile.systemPrompt !== "task") {
       await writeFile(identityFile, profile.body, "utf8");
     }
     createInbox(run.sessionFile);
-  } catch (error) {
-    throw spawnFailed(error, run.paneId, run.paneId !== previousPaneId);
-  }
-
-  state.clearTimer(run);
-  try {
-    await state.host.resumeAgent({
+    await state.host.startAgent({
       name: run.name,
-      paneId: run.paneId,
+      paneId: pane.paneId,
       sessionFile: run.sessionFile,
       agentArgs: agentArgs(profile, identityFile, state.toolName, skillPaths),
     });
@@ -89,12 +110,12 @@ export async function send(state: RunState, name: string, message: string): Prom
     run.lastHandledSeq = baseline.completionSeq;
   } catch (error) {
     state.settle(run);
-    throw spawnFailed(error, run.paneId, run.paneId !== previousPaneId);
+    throw spawnFailed(error, run.pane?.paneId, run.pane?.paneId !== previousPaneId);
   }
 
   run.live = true;
   run.pollFailures = 0;
-  ensurePoll(state);
+  wake(state);
   await enqueue(run.sessionFile, inboxMessage(message));
-  return { state: "restarted", name: run.name, paneId: run.paneId };
+  return { state: "restarted", name: run.name, paneId: run.pane.paneId };
 }

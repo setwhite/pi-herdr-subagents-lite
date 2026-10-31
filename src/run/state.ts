@@ -15,22 +15,34 @@ export interface RunServiceDeps {
   maxResultChars: number;
   aggregateWindowMs: number;
   pollIntervalMs: number;
+  idlePollIntervalMs: number;
   onDeliveryError: (error: unknown) => void;
+  now?: () => number;
+}
+
+export interface RunRead {
+  seq: number;
+  attempt: number;
+  at: number;
+}
+
+export interface RunPane {
+  tabId: string;
+  paneId: string;
 }
 
 export interface RunRecord {
   name: string;
   profileName: string;
-  paneId: string;
+  pane: RunPane | undefined;
   paneLabel: string;
   sessionFile: string;
   cwd: string;
-  tabId: string;
   autoExit: boolean;
   lastHandledSeq: number;
   lastDeliveredText: string | null;
   artifactSeq: number;
-  timer?: ReturnType<typeof setTimeout>;
+  read?: RunRead;
   pollFailures: number;
   live: boolean;
 }
@@ -38,15 +50,17 @@ export interface RunRecord {
 export interface RunState extends RunServiceDeps {
   sessionsDir: string;
   runs: RunRecord[];
+  pending: Set<Promise<unknown>>;
+  stopped: boolean;
   resultHandler: ResultHandler | undefined;
   results: Aggregator<RunResult> | undefined;
   pollTimer?: ReturnType<typeof setTimeout>;
   pollBusy: boolean;
+  activeUntil: number;
+  now: () => number;
   nextName(profile: string): string;
   active(): string[];
   available(): string[];
-  clearTimer(run: RunRecord): void;
   settle(run: RunRecord): void;
   release(run: RunRecord): void;
-  schedule(run: RunRecord, delayMs: number, task: () => void): void;
 }
