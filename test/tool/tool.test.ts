@@ -93,10 +93,13 @@ it("rejects outside herdr", async () => {
 it("keeps the default prompt short", () => {
   const tool = loadTool(fakeHost().host);
 
-  expect(tool.description).toBe("Start subagents and talk to them.");
+  expect(tool.description).toBe("Run subagents and send them messages.");
   expect(tool.promptSnippet).toBe("");
-  expect(tool.promptGuidelines).toHaveLength(1);
-  expect(tool.promptGuidelines?.[0]?.startsWith("subagent: Available profiles:\n")).toBe(true);
+  expect(tool.promptGuidelines).toEqual([
+    expect.stringMatching(/^subagent: Available profiles:\n/),
+    "subagent: run only starts the subagent; the result comes back automatically as a message.",
+    "subagent: send only delivers; state tracking is not needed.",
+  ]);
 });
 
 it("launches a worker", async () => {
