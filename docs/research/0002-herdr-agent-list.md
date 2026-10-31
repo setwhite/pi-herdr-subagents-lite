@@ -21,4 +21,8 @@
 | `agent` | 总有，恒为 `pi` | 不用 |
 | `tab_id`、`cwd`、`agent_session`、`revision`、`focused`、`terminal_*`、`workspace_id` | 总有 | 不用 |
 
-结论：按 `pane_id` 匹配，`name` 兜底；序号取 `completion_seq ?? state_change_seq`，两者都缺按 0。
+结论（2026-10-23 当时）：按 `pane_id` 匹配，`name` 兜底；序号取 `completion_seq ?? state_change_seq`，两者都缺按 0。
+
+## 后续
+
+定位顺序后来改为 session 文件优先、再 `pane_id`、最后 `name`（[0005](0005-herdr-agent-targets.md)、`src/run/find.ts`）。上表的字段测量仍有效。

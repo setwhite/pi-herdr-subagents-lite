@@ -47,6 +47,8 @@ npm 装进 `<agent-dir>/npm/node_modules/pi-herdr-subagents-lite`，`<agent-dir>
 - subagent: Start a background subagent in a herdr pane; results arrive asynchronously.
 ~~~
 
+上面那行是当时的默认工具描述，后来改过；现行文案见 `src/tool/text.ts`。
+
 结论：加载按包名解析 `<agent-dir>/npm`；路径 spec 只完成安装，不完成加载。
 
 ## 测试 3：本地 npm 布局

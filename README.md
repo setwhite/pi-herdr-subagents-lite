@@ -9,14 +9,14 @@ Behavior is defined by the [v1 contract](docs/specs/0001-v1-contract.md). Projec
 ## Features
 
 - **Separate process, human takeover**: each subagent is its own pi process in a herdr pane. Same cwd as the parent opens a tab in the same workspace, otherwise a new workspace. Switch into the pane and take over at any time.
-- **Profile layers**: Markdown + frontmatter under `<agent-dir>/pi-herdr-subagents-lite/profiles/`, plus a project layer under `.pi/pi-herdr-subagents-lite/profiles/` that wins on the same `name`.
+- **Profile layers**: Markdown + frontmatter profiles, global and per project.
 - **Async, merged results**: `run` returns at once. Each finished turn reports one `subagent_result` message; results inside `aggregateWindowMs` merge into one. Oversize results go to an artifact file.
 - **Questions stay with the human**: a child prompt marks its pane `herdr:blocked` and nothing goes to the parent. The human answers in the child pane; no model relays the answer.
 - **No nesting by default, no sandbox**: child tool sets drop this tool unless the profile names it. The profile picks tools; the extension does not restrict writes.
 
 ## Requirements
 
-herdr `0.9.5`, pi `1.4.0`, Node `>= 22.19`. The parent must run inside a herdr pane, otherwise calls fail with `not_in_herdr`.
+Tested with herdr `0.9.5` and pi `1.4.0`. Node `>= 22.19`. The parent must run inside a herdr pane, otherwise calls fail with `not_in_herdr`.
 
 ## Install
 
@@ -36,7 +36,7 @@ Upgrade with `pi update --extensions`, remove with `pi remove <source>`. After a
 ## Quick start
 
 1. Start `pi` in a herdr pane.
-2. Write a profile (next section); its frontmatter `name` is the key `run` takes. The file name is not used for lookup.
+2. Write a profile (next section); `run` takes its frontmatter `name`.
 3. Ask the model to call the tool:
 
 ```json
@@ -70,7 +70,7 @@ tools: read, bash
 # Omitted = pi discovery; "" = no skills; a list = only those
 skills: ""
 
-# append (default) / replace: body is appended to or replaces the system prompt
+# append / replace: body is appended to or replaces the system prompt
 # task: body is the task text, no identity file
 system-prompt: append
 
@@ -84,19 +84,19 @@ disable-model-invocation: false
 You are a read-only explorer. Answer with file paths and line numbers.
 ```
 
-Defaults and error codes: [contract section 2](docs/specs/0001-v1-contract.md#2-profile). A file without `name`, or with an invalid field, stays out of the list; duplicate names in one layer are all rejected. `run` returns `profile_invalid` with the file, field and reason.
+Error codes: [contract section 2](docs/specs/0001-v1-contract.md#2-profile). Defaults: `src/profile/frontmatter.ts` and `test/profile/`. A file without `name`, or with an invalid field, stays out of the list; duplicate names in one layer are all rejected. `run` returns `profile_invalid` with the file, field and reason.
 
 A bundled example ships with the extension; its file name and `name` are both `domain`. Loading reads `profiles/*.md` only and the example is written only when missing, so copy it one level up:
 
 ```bash
-cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md
+cd <agent-dir>/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md
 ```
 
 ## Configuration
 
 One global file: `<agent-dir>/pi-herdr-subagents-lite/config.json`. `<agent-dir>` defaults to `~/.pi/agent` and follows `PI_CODING_AGENT_DIR`. Project config is not read.
 
-Defaults and clamp boundaries are defined by `src/config/index.ts` and `test/config/config.test.ts` ([contract §1](docs/specs/0001-v1-contract.md#1-配置)). This section lists keys and meaning only.
+Defaults and clamp boundaries: `src/config/index.ts`, `test/config/config.test.ts`. Key meaning: [contract §1](docs/specs/0001-v1-contract.md#1-配置).
 
 ### Minimal config
 
@@ -120,8 +120,8 @@ A missing file means all defaults. To change one value, write only that value:
 | `aggregateWindowMs` | Merge window in milliseconds; 0 = deliver each result at once |
 | `closeChildrenOn` | Parent shutdown reasons that close its child tabs: `new` / `resume` / `fork` / `quit` / `reload`; empty = never |
 | `inboxPollMs` | Child inbox polling interval |
-| `pollIntervalMs` | Parent `agent list` interval while a child works, or right after `run` / `send` |
-| `idlePollIntervalMs` | Parent interval when every live child only waits for `send`; it bounds how late a dead pane is noticed |
+| `pollIntervalMs` | Parent `agent list` interval while a child is working or blocked, or within 30 s of `run` / `send` |
+| `idlePollIntervalMs` | Parent interval when every live child only waits for `send`; it bounds how late a vanished pane is noticed (a killed child whose pane lives is fixed at 10 s) |
 | `prompts` | Tool text overrides: `description`, `snippet`, `guidelines`; omitted keys keep the built-in text; `snippet: ""` hides the tool from Available tools; keep `{{profiles}}` to list profiles |
 | `bridge` | `enabled` turns pi prompt events into `herdr:blocked`; `blockedOn` lists the prompt kinds that count as blocked |
 
@@ -140,18 +140,15 @@ The design is based on these projects. Thank you.
 
 ## Docs
 
-All docs are in Chinese.
-
 - [ARCHITECTURE](docs/ARCHITECTURE.md): module boundaries, dependency direction, test seams
 - [GLOSSARY](docs/GLOSSARY.md): the only source for terms
 - [Modules](docs/modules/): usage and trade-offs per module
-- [ADR](docs/decisions/): decisions and rejected proposals, with reasons
 
 ## Development
 
 ```bash
 pnpm install        # dependencies
-pnpm check          # lint + import boundaries + types + unit tests
+pnpm check          # the four checks below
 pnpm test           # unit tests (vitest)
 pnpm lint           # biome
 pnpm typecheck      # tsc --noEmit

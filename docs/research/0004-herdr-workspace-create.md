@@ -87,4 +87,3 @@ herdr --session probe-t33 workspace list
 
 9. `agent start` 的就绪判定是「agent 处于 idle」，不是「进程已起」。先投 brief 再 start 会把启动等待变成首轮时长。
 10. 正确顺序：`createInbox` → `agent start` → `enqueue(@brief)`。目录必须先建，否则子代理侧的泵不启动。
-

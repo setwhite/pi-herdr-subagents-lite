@@ -7,8 +7,8 @@
 ## 1. 命名与拆分规则
 
 - 模块名是职责的普通名词，小写、单数：`config`、`profile`、`inbox`、`bridge`、`run`。禁用看不出职责的词：`utils`、`common`、`helpers`、`core`、`ports`、`service`、`manager`。
-- 一个模块 = 一个目录；对外只经 `index.ts`，其他文件不出模块。
-- 模块内文件按职责命名，一个文件一件事，用单数普通名词或动词；不用 `-er` / `-or` 结尾的施动者名（`poller.ts`、`handler.ts`）。
+- 一个模块 = 一个目录；对外只经 `index.ts`。产品代码只从入口 import；测试可以直接 import 模块内文件，那正是 seam。
+- 模块内文件按职责命名，一个文件一件事；不用 `-er` / `-or` 结尾的施动者名（`poller.ts`、`handler.ts`）。
 - 单文件上限 150 行，超过就拆；按「谁变」拆，不按「谁像」拆：一侧改而另一侧不动的代码放两个文件。
 - 类型放在使用它最多的模块；跨模块只从模块入口 import。
 
@@ -16,19 +16,19 @@
 
 | 模块 | 职责 | 对外 | 文件 |
 |---|---|---|---|
-| `index.ts` | composition root：构造真实依赖，导出扩展 | `default` | — |
+| `index.ts` | composition root：构造真实依赖、写入示例 profile、导出扩展 | `default` | — |
 | [`error`](modules/error.md) | 把 `unknown` 错误转成文本 | `errorText` | `index.ts` |
 | [`extension`](modules/extension.md) | pi 装配：注册工具、挂 `session_start` / `session_shutdown`、子侧 inbox 泵、退出回执、父会话收尾 | `createExtension`、`ExtensionDeps`、`ExtensionRegistrar`、`SessionContext`、`SubagentTool` | `index.ts` `auto-exit.ts` `shutdown.ts` |
 | [`tool`](modules/tool.md) | 模型面：参数 schema、文案、错误渲染、结果消息信封 | `createTool`、`SubagentTool`、`sendResults`、`ResultMessage` | `index.ts` `schema.ts` `text.ts` `errors.ts` `message.ts` |
-| [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`ResultHandler`、`CloseChildrenResult`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `slot.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `pane.ts` `poll.ts` `poll-result.ts` `result.ts` `send.ts` `state.ts` `errors.ts` `close.ts` `find.ts` `aggregate.ts` `artifact.ts` |
-| [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`ResumeAgentInput`、`CloseTabResult` | `index.ts` `cli.ts` `agent.ts` `pane.ts` |
+| [`run`](modules/run.md) | run 生命周期：槽位、命名、启动、轮询、结果、聚合、send、关闭 | `createRunService`、`ToolError`、`profileLabel`、`RunService`、`RunServiceDeps`、`RunStarted`、`SendResult`、`RunResult`、`UnknownReason`、`ResultHandler`、`CloseChildrenResult`、`AUTO_EXIT_ENV` | `index.ts` `start.ts` `slot.ts` `naming.ts` `resolve.ts` `truncate.ts` `spawn-args.ts` `paths.ts` `pane.ts` `poll.ts` `poll-result.ts` `result.ts` `send.ts` `state.ts` `errors.ts` `close.ts` `find.ts` `aggregate.ts` `artifact.ts` |
+| [`herdr`](modules/herdr.md) | herdr CLI 端口 | `HerdrHost`、`createHerdrHost`、`HerdrHostError`、`AgentSnapshot`、`AgentEntry`、`StartAgentInput`、`CloseTabResult` | `index.ts` `cli.ts` `agent.ts` `pane.ts` |
 | [`session-file`](modules/session-file.md) | session 旁边的文件：最后一条 assistant、`.exit` 回执 | `readLastAssistant`、`SessionReader`、`readExitReceipt`、`ExitReceiptReader`、`writeExitReceipt`、`ExitReceiptWriter`、`ExitReceipt` | `index.ts` `jsonl.ts` `tail.ts` `receipt.ts` |
 | [`inbox`](modules/inbox.md) | `<childSession>.inbox/` 文件协议与子侧泵 | `createInbox`、`enqueue`、`drain`、`hasInbox`、`inboxCount`、`removeInbox`、`pumpInbox` | `index.ts` `pump.ts` |
 | [`config`](modules/config.md) | 全局配置读取与严格校验 | `loadConfig`、`dataDir`、`Config`、`BlockedKind`、`ShutdownReason`、`isRaw`、`Raw` | `index.ts` `schema.ts` |
-| [`profile`](modules/profile.md) | profile 读取、校验、分层、示例落盘 | `loadProfiles`、`seedExampleProfile`、`globalProfilesDir`、`agentDir`、`resolveSkillPaths`、`Profile`、`ProfileCatalog`、`ProfileSources`、`EXAMPLE_PROFILE`、`EXAMPLE_PROFILE_FILE` | `index.ts` `frontmatter.ts` `layers.ts` `examples.ts` `skills.ts` |
+| [`profile`](modules/profile.md) | profile 读取、校验、分层、示例落盘 | `loadProfiles`、`seedExampleProfile`、`globalProfilesDir`、`agentDir`、`resolveSkillPaths`、`Profile`、`ProfileCatalog`、`ProfileSources`、`EXAMPLE_PROFILE`、`EXAMPLE_PROFILE_FILE` | `index.ts` `frontmatter.ts` `layers.ts` `examples.ts` `seed.ts` `skills.ts` |
 | [`bridge`](modules/bridge.md) | `ui_prompt_*` → `herdr:blocked`，按 `bridge.enabled` / `blockedOn` 过滤 | `createBridge` | `index.ts` |
 
-入口不是模块：只构造真实 host、配置、profile 加载器、session 读取器，把它们注入 `createExtension`。
+入口不是模块：构造真实 host、配置、profile 加载器、session 读取器并注入 `createExtension`；加载时还调一次 `seedExampleProfile(globalProfilesDir())` 写示例（DEC-0057）。
 
 ## 3. 依赖方向
 
@@ -63,7 +63,7 @@ profile -> error
 
 - 只能沿箭头依赖，禁止反向 import；`config`、`error`、`herdr`、`session-file`、`inbox` 是叶子。
 - `error` 只把 `unknown` 转成文本，不 import 任何模块。
-- `config` 只认 Node fs/path/os，不 import pi；配置错误的唯一表达是一条带字段名的 Error。
+- `config` 只认 Node fs/path，不 import pi；配置错误的唯一表达是一条带字段名的 Error。
 - `inbox` 只认 Node fs/path/crypto，不解析消息内容，不记投递失败次数；泵的每拍动作由调用方注入。
 - `run` 不 import pi；`extension` 不 import 真实 CLI 或 fs；只有 `index.ts` 把真实适配器、配置与 pi 装配到一起。
 - 宿主包 `@earendil-works/pi-coding-agent` 在 `src/index.ts`、`src/extension/index.ts`、`src/tool/index.ts` 只做 type-only import，在 `src/profile/` 做运行时 import；`typebox` 只在 `tool/schema.ts`。
@@ -75,7 +75,7 @@ profile -> error
 
 ## 5. 测试 seam
 
-`test/` 按被测模块分目录（`config/` `profile/` `herdr/` `session-file/` `inbox/`），经扩展工具跑的行为测试放 `test/tool/`，共享夹具放 `test/support/`。一个文件一个行为面，单文件同样 150 行上限。
+`test/` 按被测模块分目录（`config/` `profile/` `herdr/` `session-file/` `inbox/`；bridge 的测试在 `inbox/` 下，两者共用一个 session 路径），经扩展工具跑的行为测试放 `test/tool/`，装配与组合根的测试是 `test/index.test.ts`，共享夹具放 `test/support/`。一个文件一个行为面，单文件同样 150 行上限。
 
 | seam | 用法 | 覆盖 |
 |---|---|---|

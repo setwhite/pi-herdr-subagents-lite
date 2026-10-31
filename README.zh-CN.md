@@ -9,14 +9,14 @@ pi 扩展：让子代理作为独立 pi 进程跑在 herdr pane 里。一个工�
 ## 功能
 
 - **独立进程，可人工接管**：每个子代理是 herdr pane 里独立的 pi 进程。cwd 与父相同则同 workspace 新开 tab，否则新建 workspace。随时切进去接管。
-- **两层 profile**：Markdown + frontmatter，全局 `<agent-dir>/pi-herdr-subagents-lite/profiles/`，项目层 `.pi/pi-herdr-subagents-lite/profiles/`，`name` 相同时项目层覆盖。
+- **两层 profile**：Markdown + frontmatter，全局一层、项目一层。
 - **异步、可合并的结果**：`run` 立即返回。每次收工投一条 `subagent_result`；落在 `aggregateWindowMs` 内的结果合并成一条。超长结果落 artifact 文件。
 - **反问留在人这边**：子代理弹出对话框时只发出 `herdr:blocked` 事件，父侧什么也收不到。人在子 pane 里回答，不经模型转达。
 - **默认不嵌套，也不是沙箱**：子代理的工具集默认去掉本工具，profile 里点名才授予。工具由 profile 决定，扩展不限制写操作。
 
 ## 要求
 
-herdr `0.9.5`、pi `1.4.0`、Node `>= 22.19`。父会话必须在 herdr pane 里，否则调用返回 `not_in_herdr`。
+在 herdr `0.9.5` 与 pi `1.4.0` 上测过。Node `>= 22.19`。父会话必须在 herdr pane 里，否则调用返回 `not_in_herdr`。
 
 ## 安装
 
@@ -36,7 +36,7 @@ pi -e /path/to/pi-herdr-subagents-lite/src/index.ts        # 只对当前进程�
 ## 快速开始
 
 1. 在 herdr pane 里启动 `pi`。
-2. 写一个 profile（下一节）；frontmatter `name` 就是 `run` 的寻址名，文件名不参与查找。
+2. 写一个 profile（下一节）；frontmatter `name` 就是 `run` 的寻址名。
 3. 让模型调用工具：
 
 ```json
@@ -70,33 +70,33 @@ tools: read, bash
 # 省略 = 由 pi 发现；"" = 不加载；列表 = 只加载列出的
 skills: ""
 
-# append（默认）/ replace：正文追加到或替换系统提示
+# append / replace：正文追加到或替换系统提示
 # task：正文就是任务文本，不写身份文件
 system-prompt: append
 
 # 收工后自行退出并关掉 tab；有打开的对话框或 inbox 待投递时会等
 auto-exit: true
 
-# true = 从工具说明里隐藏；显式 run 仍然可用
+# true = 不出现在 guidelines 的 profile 列表里；显式 run 仍然可用
 disable-model-invocation: false
 ---
 
 你是一名只读探索者，回答时给出文件路径与行号。
 ```
 
-字段默认值与错误码见 [契约 §2](docs/specs/0001-v1-contract.md#2-profile)。没写 `name`、字段非法或同层同名的文件都不进列表；对它 `run` 返回 `profile_invalid`，带文件、字段与原因。
+错误码见 [契约 §2](docs/specs/0001-v1-contract.md#2-profile)；默认值见 `src/profile/frontmatter.ts` 与 `test/profile/`。没写 `name`、字段非法或同层同名的文件都不进列表；对它 `run` 返回 `profile_invalid`，带文件、字段与原因。
 
 扩展自带一个示例 profile，文件名和 `name` 都是 `domain`。加载只读 `profiles/*.md`，示例也只在缺失时写入，所以复制一层上去即可：
 
 ```bash
-cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md
+cd <agent-dir>/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.md
 ```
 
 ## 配置
 
 只有一个全局文件：`<agent-dir>/pi-herdr-subagents-lite/config.json`。`<agent-dir>` 默认 `~/.pi/agent`，跟随 `PI_CODING_AGENT_DIR`。项目级配置不读。
 
-默认值与 clamp 边界由 `src/config/index.ts` 与 `test/config/config.test.ts` 定义（[契约 §1](docs/specs/0001-v1-contract.md#1-配置)）。本节只列键与语义。
+默认值与 clamp 边界：`src/config/index.ts`、`test/config/config.test.ts`。键与语义：[契约 §1](docs/specs/0001-v1-contract.md#1-配置)。
 
 ### 最小配置
 
@@ -114,14 +114,14 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 |---|---|
 | `enabled` | 只管工具注册；bridge 有自己的开关 |
 | `toolName` | 模型看到的工具名；`^[a-z][a-z0-9_]{0,31}$` |
-| `herdrBin` | herdr 可执行文件；相对名从 PATH 解析，绝对路径锁定版本 |
+| `herdrBin` | herdr 可执行文件；裸名从 PATH 解析，绝对路径锁定版本 |
 | `maxConcurrent` | 每个父会话并存的子代理数；`auto-exit: false` 的子代理收工后仍占槽 |
 | `maxResultChars` | 单条结果字符上限；超了全文落 artifact，消息里留截断的头和路径 |
 | `aggregateWindowMs` | 合并窗口，毫秒；0 = 逐条立即投递 |
 | `closeChildrenOn` | 父会话以这些原因退出时关掉子 tab：`new` / `resume` / `fork` / `quit` / `reload`；空 = 从不关 |
 | `inboxPollMs` | 子侧 inbox 轮询间隔 |
-| `pollIntervalMs` | 父侧 `agent list` 间隔；有子代理在工作，或刚 `run` / `send` 时用 |
-| `idlePollIntervalMs` | 所有 live 子代理都只是在等 `send` 时的间隔；它决定 pane 死亡最晚多久被发现 |
+| `pollIntervalMs` | 父侧 `agent list` 间隔；有子代理在 working 或 blocked，或刚 `run` / `send` 的 30 秒内用 |
+| `idlePollIntervalMs` | 所有 live 子代理都只是在等 `send` 时的间隔；它决定 pane 消失最晚多久被发现（pane 还在、进程被杀的那类固定 10 秒） |
 | `prompts` | 覆盖工具文案：`description`、`snippet`、`guidelines`；省略的键用内置文案；`snippet: ""` 让工具从 Available tools 消失；保留 `{{profiles}}` 才会列出 profile |
 | `bridge` | `enabled` 把 pi 对话框事件转成 `herdr:blocked`；`blockedOn` 列出算 blocked 的对话框类型 |
 
@@ -140,16 +140,15 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 
 ## 文档
 
-- [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块边界与 seam，改结构前看
-- [GLOSSARY](docs/GLOSSARY.md) — 术语唯一来源，命名前看
-- [模块](docs/modules/) — 各模块的用法与取舍
-- [ADR](docs/decisions/) — 已决选型与理由，改设计前扫一遍
+- [ARCHITECTURE](docs/ARCHITECTURE.md)：模块边界、依赖方向、测试 seam
+- [GLOSSARY](docs/GLOSSARY.md)：术语唯一来源
+- [模块](docs/modules/)：各模块的用法与取舍
 
 ## 开发
 
 ```bash
 pnpm install        # 装依赖
-pnpm check          # lint + 导入边界 + 类型 + 单测
+pnpm check          # 下面四项
 pnpm test           # 单测（vitest）
 pnpm lint           # biome
 pnpm typecheck      # tsc --noEmit
