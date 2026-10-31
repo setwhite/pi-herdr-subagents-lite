@@ -54,7 +54,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `model` | string | 继承父 | provider/model 或 pi 支持的 pattern |
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
 | `tools` | string | `-<toolName>` | 省略 = pi 默认集去掉本工具（防嵌套）；纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
-| `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项（`<agent-dir>/skills/<name>`）；列表项是名字，不带 `+` / `-` |
+| `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项，名字按 pi 默认发现集解析（agent-dir、项目 `.pi/skills`、`.agents/skills`、包内、settings 配置）；列表项是名字，不带 `+` / `-`；查不到报 `profile_invalid` |
 | `system-prompt` | string | append | append / replace / task；省略 = append，见 [DEC-0051](../decisions/0051-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
@@ -103,7 +103,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `unknown_profile` | run 的 profile 不存在 | 当前 profile 列表（name + description） |
 | `unknown_agent` | send 的 name 不在 run 记录里 | 当前可用名称 |
 | `max_concurrent` | live 子代理已达 maxConcurrent | 当前 live 名称；等结果或关一个 |
-| `profile_invalid` | profile 字段解析失败 | 文件 + 字段 + 原因 |
+| `profile_invalid` | profile 字段解析失败，或 `skills` 里的名字找不到 | 文件 + 字段 + 原因，或 skill 名 + cwd |
 | `spawn_failed` | tab / pane / agent start 失败；含未就绪与 trust 对话框拦住 | 底层错误；已创建的 pane id 保留；未就绪时附「去 pane 处理对话框」 |
 | `name_exhausted` | 自动命名重试用尽仍冲突 | 尝试 100 次仍无空闲名 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |

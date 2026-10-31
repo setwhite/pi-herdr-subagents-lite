@@ -112,6 +112,7 @@ export function createExtension(deps: ExtensionDeps): (pi: ExtensionRegistrar) =
         readLastAssistant: deps.readLastAssistant,
         readExitReceipt: deps.readExitReceipt,
         loadProfiles: () => deps.loadProfiles(sources),
+        trusted: sources.trusted,
         maxConcurrent: config.maxConcurrent,
         maxResultChars: config.maxResultChars,
         aggregateWindowMs: config.aggregateWindowMs,

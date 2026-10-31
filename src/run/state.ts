@@ -9,6 +9,7 @@ export interface RunServiceDeps {
   readLastAssistant: SessionReader;
   readExitReceipt: ExitReceiptReader;
   loadProfiles: () => ProfileCatalog;
+  trusted: boolean;
   toolName: string;
   maxConcurrent: number;
   maxResultChars: number;

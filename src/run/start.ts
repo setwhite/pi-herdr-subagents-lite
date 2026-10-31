@@ -6,7 +6,7 @@ import { createInbox, removeInbox } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
 import { paneLabel } from "./naming.ts";
 import { ensurePoll } from "./poll.ts";
-import { resolveProfile } from "./resolve.ts";
+import { resolveProfile, resolveSkills } from "./resolve.ts";
 import { AUTO_EXIT_ENV, agentArgs, briefText, parentCwd, resolveCwd } from "./spawn-args.ts";
 import type { RunRecord, RunState } from "./state.ts";
 
@@ -76,6 +76,7 @@ export async function start(state: RunState, profileName: string, task: string, 
   state.runs.push(run);
 
   try {
+    const skillPaths = await resolveSkills(profile, cwd, state.trusted);
     run.paneLabel = paneLabel(task) || run.name;
     await createPane(state, run, cwd, run.paneLabel);
     await mkdir(state.sessionsDir, { recursive: true });
@@ -92,7 +93,7 @@ export async function start(state: RunState, profileName: string, task: string, 
           paneId: run.paneId,
           sessionFile: current.sessionFile,
           briefFile: current.briefFile,
-          agentArgs: agentArgs(profile, current.identityFile, state.toolName),
+          agentArgs: agentArgs(profile, current.identityFile, state.toolName, skillPaths),
         });
         break;
       } catch (error) {

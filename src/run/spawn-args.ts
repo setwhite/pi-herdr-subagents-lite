@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { type Profile, skillPath } from "../profile/index.ts";
+import type { Profile } from "../profile/index.ts";
 
 export const AUTO_EXIT_ENV = "PI_SUBAGENT_AUTO_EXIT";
 
@@ -16,7 +16,12 @@ export function resolveCwd(raw: string | undefined): string {
   return resolve(parentCwd(), expanded);
 }
 
-export function agentArgs(profile: Profile, identityFile: string, toolName: string): string[] {
+export function agentArgs(
+  profile: Profile,
+  identityFile: string,
+  toolName: string,
+  skillPaths: string[] | undefined,
+): string[] {
   const args: string[] = [];
   if (profile.model !== undefined) {
     args.push("--model", profile.model);
@@ -29,10 +34,10 @@ export function agentArgs(profile: Profile, identityFile: string, toolName: stri
   } else {
     args.push(...(profile.tools === "" ? ["--no-tools"] : ["--tools", profile.tools]));
   }
-  if (profile.skills !== undefined) {
+  if (skillPaths !== undefined) {
     args.push("--no-skills");
-    for (const name of profile.skills) {
-      args.push("--skill", skillPath(name));
+    for (const file of skillPaths) {
+      args.push("--skill", file);
     }
   }
   if (profile.systemPrompt === "append") {

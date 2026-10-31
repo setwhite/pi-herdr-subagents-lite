@@ -4,7 +4,7 @@ import { createInbox, enqueue } from "../inbox/index.ts";
 import { spawnFailed, ToolError } from "./errors.ts";
 import { findAgent } from "./find.ts";
 import { ensurePoll } from "./poll.ts";
-import { resolveProfile } from "./resolve.ts";
+import { resolveProfile, resolveSkills } from "./resolve.ts";
 import { agentArgs } from "./spawn-args.ts";
 import { createPane } from "./start.ts";
 import type { RunState } from "./state.ts";
@@ -59,6 +59,7 @@ export async function send(state: RunState, name: string, message: string): Prom
   const profile = resolveProfile(state.loadProfiles(), run.profileName);
   run.autoExit = profile.autoExit;
   const cwd = run.cwd;
+  const skillPaths = await resolveSkills(profile, cwd, state.trusted);
   const identityFile = `${run.sessionFile}.identity.md`;
   const previousPaneId = run.paneId;
   try {
@@ -79,7 +80,7 @@ export async function send(state: RunState, name: string, message: string): Prom
       name: run.name,
       paneId: run.paneId,
       sessionFile: run.sessionFile,
-      agentArgs: agentArgs(profile, identityFile, state.toolName),
+      agentArgs: agentArgs(profile, identityFile, state.toolName, skillPaths),
     });
     const baseline = findAgent(await state.host.listAgents(), run);
     if (!baseline) {

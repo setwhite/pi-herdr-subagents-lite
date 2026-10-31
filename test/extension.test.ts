@@ -320,6 +320,12 @@ function writeProfile(fileName: string, content: string) {
   writeFileSync(file, withProfileName(fileName, content));
 }
 
+function writeSkill(dir: string, name: string) {
+  const file = join(dir, name, "SKILL.md");
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `---\ndescription: ${name} skill\n---\n\nBody.\n`);
+}
+
 function sessionsRoot(): string {
   return join(agentDir, "pi-herdr-subagents-lite", "sessions");
 }
@@ -474,18 +480,17 @@ async function exitedChild(options: { profile?: string; baseline?: AgentSnapshot
 
 function startRun(
   fake: ReturnType<typeof fakeHost>,
-  options: { profile?: string; task?: string; cwd?: string } = {},
+  options: { profile?: string; task?: string; cwd?: string; trusted?: boolean } = {},
 ): Promise<{ agent: StartAgentInput; started: RunStarted }> {
-  return runTask(loadTool(fake.host), options.task ?? "inspect the repo", options.profile, options.cwd).then(
-    (result) => {
-      const started = parseStarted(result);
-      const agent = fake.agents[0];
-      if (!agent) {
-        throw new Error("expected startAgent to be called");
-      }
-      return { agent, started };
-    },
-  );
+  const tool = loadTool(fake.host, { isProjectTrusted: () => options.trusted === true });
+  return runTask(tool, options.task ?? "inspect the repo", options.profile, options.cwd).then((result) => {
+    const started = parseStarted(result);
+    const agent = fake.agents[0];
+    if (!agent) {
+      throw new Error("expected startAgent to be called");
+    }
+    return { agent, started };
+  });
 }
 
 function firstText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -817,6 +822,8 @@ it("removes the renamed tool by default", async () => {
 
 it("maps skills", async () => {
   process.env.HERDR_ENV = "1";
+  writeSkill(join(agentDir, "skills"), "a");
+  writeSkill(join(agentDir, "skills"), "b");
   writeProfile("worker.md", "---\nskills: [a, b]\n---\n\nWorker body.\n");
 
   const named = await startRun(fakeHost());
@@ -825,9 +832,9 @@ it("maps skills", async () => {
     expect.arrayContaining([
       "--no-skills",
       "--skill",
-      join(agentDir, "skills", "a"),
+      join(agentDir, "skills", "a", "SKILL.md"),
       "--skill",
-      join(agentDir, "skills", "b"),
+      join(agentDir, "skills", "b", "SKILL.md"),
     ]),
   );
 
@@ -837,6 +844,31 @@ it("maps skills", async () => {
 
   expect(plain.agent.agentArgs).not.toContain("--skill");
   expect(plain.agent.agentArgs).not.toContain("--no-skills");
+});
+
+it("resolves a skill from the project when the project is trusted", async () => {
+  process.env.HERDR_ENV = "1";
+  writeSkill(join(projectDir, ".pi", "skills"), "proj");
+  writeProfile("worker.md", "---\nskills: [proj]\n---\n\nWorker body.\n");
+
+  const { agent } = await startRun(fakeHost(), { trusted: true, cwd: projectDir });
+
+  expect(agent.agentArgs).toEqual(
+    expect.arrayContaining(["--skill", join(projectDir, ".pi", "skills", "proj", "SKILL.md")]),
+  );
+});
+
+it("reports a missing skill as profile_invalid", async () => {
+  process.env.HERDR_ENV = "1";
+  writeProfile("worker.md", "---\nskills: [missing]\n---\n\nWorker body.\n");
+  const fake = fakeHost();
+
+  const result = await runTask(loadTool(fake.host), "inspect the repo", "worker");
+
+  expect(result.isError).toBe(true);
+  expect(result.details).toMatchObject({ code: "profile_invalid" });
+  expect(firstText(result)).toContain('skill "missing"');
+  expect(fake.agents).toEqual([]);
 });
 
 it("labels the pane with the first task line", async () => {
