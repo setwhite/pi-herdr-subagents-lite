@@ -46,7 +46,7 @@ const SINGLE_IMPORT = [
     ],
   },
   {
-    specifier: /^node:(path|os|crypto)$/,
+    specifier: /^node:path$/,
     only: [
       "src/config/index.ts",
       "src/inbox/index.ts",
@@ -55,9 +55,17 @@ const SINGLE_IMPORT = [
       "src/profile/seed.ts",
       "src/run/index.ts",
       "src/run/pane.ts",
+      "src/run/paths.ts",
       "src/run/start.ts",
       "src/run/spawn-args.ts",
     ],
+  },
+  { specifier: /^node:os$/, only: ["src/run/spawn-args.ts"] },
+  { specifier: /^node:crypto$/, only: ["src/inbox/index.ts", "src/run/start.ts"] },
+  {
+    specifier: /^\.\.\/session-file\/index\.ts$/,
+    only: ["src/run/", "src/extension/"],
+    typeOnlyIn: ["src/run/", "src/extension/"],
   },
   {
     specifier: /^\.\.\/(config|herdr|profile|session-file)\/index\.ts$/,
