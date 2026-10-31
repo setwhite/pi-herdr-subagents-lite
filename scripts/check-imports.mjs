@@ -10,10 +10,11 @@ import { join, relative } from "node:path";
 const EDGES = {
   ".": ["config", "extension", "herdr", "profile", "session-file"],
   config: ["config"],
-  extension: ["config", "extension", "profile", "run", "herdr", "session-file", "inbox", "tool", "bridge"],
+  extension: ["config", "extension", "error", "profile", "run", "herdr", "session-file", "inbox", "tool", "bridge"],
+  error: ["error"],
   tool: ["config", "profile", "run", "tool"],
-  run: ["config", "run", "profile", "herdr", "session-file", "inbox"],
-  profile: ["config", "profile"],
+  run: ["config", "error", "run", "profile", "herdr", "session-file", "inbox"],
+  profile: ["config", "error", "profile"],
   herdr: ["herdr"],
   "session-file": ["session-file"],
   inbox: ["inbox"],
@@ -35,8 +36,10 @@ const SINGLE_IMPORT = [
       "src/config/index.ts",
       "src/inbox/index.ts",
       "src/profile/layers.ts",
+      "src/profile/seed.ts",
       "src/session-file/index.ts",
       "src/session-file/receipt.ts",
+      "src/session-file/tail.ts",
       "src/run/start.ts",
       "src/run/send.ts",
       "src/run/artifact.ts",
@@ -49,7 +52,9 @@ const SINGLE_IMPORT = [
       "src/inbox/index.ts",
       "src/profile/index.ts",
       "src/profile/layers.ts",
+      "src/profile/seed.ts",
       "src/run/index.ts",
+      "src/run/pane.ts",
       "src/run/start.ts",
       "src/run/spawn-args.ts",
     ],
@@ -60,6 +65,23 @@ const SINGLE_IMPORT = [
     typeOnlyIn: ["src/extension/", "src/tool/", "src/bridge/"],
   },
 ];
+
+/** 静态 import、`export ... from`、动态 import() 都算依赖；type-only 判定同 TS 语义。 */
+function specifiers(source) {
+  const found = [];
+  for (const [, typeOnly, spec] of source.matchAll(/^import\s+(type\s+)?(?:[\w*{}\s,$]+from\s+)?["']([^"']+)["']/gm)) {
+    found.push({ typeOnly: typeOnly !== undefined, spec });
+  }
+  for (const [, typeOnly, spec] of source.matchAll(
+    /^export\s+(type\s+)?(?:\*|\{[^}]*\})\s+from\s+["']([^"']+)["']/gm,
+  )) {
+    found.push({ typeOnly: typeOnly !== undefined, spec });
+  }
+  for (const [, spec] of source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+    found.push({ typeOnly: false, spec });
+  }
+  return found;
+}
 
 const files = [];
 function walk(directory) {
@@ -92,12 +114,12 @@ const moduleOf = (path) => {
 const failures = [];
 for (const file of files.sort()) {
   const source = readFileSync(file, "utf-8");
-  for (const [, typeOnly, spec] of source.matchAll(/^import\s+(type\s+)?(?:[\w*{}\s,$]+from\s+)?["']([^"']+)["']/gm)) {
+  for (const { typeOnly, spec } of specifiers(source)) {
     for (const rule of SINGLE_IMPORT) {
       if (!rule.specifier.test(spec)) continue;
       if (!rule.only.some((allowed) => file === allowed || file.startsWith(allowed))) {
         failures.push(`${file}: ${spec} is only allowed in ${rule.only.join(", ")}`);
-      } else if (typeOnly === undefined && rule.typeOnlyIn?.some((allowed) => file.startsWith(allowed))) {
+      } else if (!typeOnly && rule.typeOnlyIn?.some((allowed) => file.startsWith(allowed))) {
         failures.push(`${file}: ${spec} must be import type`);
       }
     }
