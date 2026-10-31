@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
-import { loadConfig } from "../src/config/index.ts";
+import { loadConfig } from "../../src/config/index.ts";
 
 const specDefaults = {
   enabled: true,
@@ -14,6 +14,7 @@ const specDefaults = {
   closeChildrenOn: [],
   inboxPollMs: 250,
   pollIntervalMs: 1000,
+  idlePollIntervalMs: 8000,
   prompts: {},
   bridge: { enabled: true, blockedOn: ["custom", "select", "confirm", "input", "editor"] },
 };
@@ -59,6 +60,8 @@ it.each([
   [{ inboxPollMs: 99999 }, { inboxPollMs: 5000 }],
   [{ pollIntervalMs: 1 }, { pollIntervalMs: 100 }],
   [{ pollIntervalMs: 99999 }, { pollIntervalMs: 60000 }],
+  [{ idlePollIntervalMs: 1 }, { idlePollIntervalMs: 100 }],
+  [{ idlePollIntervalMs: 99999 }, { idlePollIntervalMs: 60000 }],
 ])("clamps %o", (patch, expected) => {
   expect(readConfig(patch)).toMatchObject(expected);
 });

@@ -1,9 +1,8 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { createInbox, drain, enqueue, hasInbox, inboxCount, removeInbox } from "../src/inbox/index.ts";
+import { createInbox, drain, enqueue, hasInbox, inboxCount, removeInbox } from "../../src/inbox/index.ts";
 
 let root = "";
 
@@ -69,15 +68,14 @@ it("enqueues markdown messages in send order", async () => {
   expect(delivered).toEqual(["first", "second"]);
 });
 
-it("archives delivered messages under .delivered", async () => {
+it("removes delivered messages", async () => {
   await enqueue(sessionFile(), "one");
 
   await drain(sessionFile(), () => {});
 
   expect(pending()).toEqual([]);
-  const archived = readdirSync(join(inboxDir(), ".delivered")).filter((entry) => entry.endsWith(".md"));
-  expect(archived).toHaveLength(1);
-  expect(await readFile(join(inboxDir(), ".delivered", archived[0] ?? ""), "utf8")).toBe("one");
+  expect(readdirSync(inboxDir())).toEqual([]);
+  expect(existsSync(join(inboxDir(), ".delivered"))).toBe(false);
 });
 
 it("counts only pending messages", async () => {

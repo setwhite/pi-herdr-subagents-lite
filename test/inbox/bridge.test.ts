@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { createBridge } from "../src/bridge/index.ts";
-import type { BlockedKind, Config } from "../src/config/index.ts";
+import { createBridge } from "../../src/bridge/index.ts";
+import type { BlockedKind, Config } from "../../src/config/index.ts";
 
 type PromptEvent = { kind: BlockedKind; title?: string };
 

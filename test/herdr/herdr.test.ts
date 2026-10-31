@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import type { ExecHerdr } from "../src/herdr/cli.ts";
-import { createPaneCommands } from "../src/herdr/pane.ts";
+import type { ExecHerdr } from "../../src/herdr/cli.ts";
+import { createPaneCommands } from "../../src/herdr/pane.ts";
 
 const result = {
   workspace: { workspace_id: "w1" },
@@ -17,13 +17,15 @@ function fakeCommands() {
   return { calls, commands: createPaneCommands(exec) };
 }
 
-it("creates a workspace and returns its id", async () => {
+it("creates a workspace and returns its first tab", async () => {
   const { calls, commands } = fakeCommands();
 
-  await expect(commands.createWorkspace({ cwd: "/repo", label: "explore-1" })).resolves.toEqual({
-    workspaceId: "w1",
-  });
-  expect(calls).toEqual([["workspace", "create", "--cwd", "/repo", "--label", "explore-1", "--no-focus"]]);
+  await expect(
+    commands.createWorkspace({ cwd: "/repo", label: "explore-1", env: { PI_SUBAGENT_AUTO_EXIT: "1" } }),
+  ).resolves.toEqual({ workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p2" });
+  expect(calls).toEqual([
+    ["workspace", "create", "--cwd", "/repo", "--label", "explore-1", "--env", "PI_SUBAGENT_AUTO_EXIT=1", "--no-focus"],
+  ]);
 });
 
 it("creates a tab in the given workspace", async () => {
