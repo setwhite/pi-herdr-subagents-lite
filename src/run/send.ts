@@ -115,6 +115,8 @@ export async function send(state: RunState, name: string, message: string): Prom
 
   run.live = true;
   run.pollFailures = 0;
+  run.busy = false;
+  run.absentSince = undefined;
   wake(state);
   await enqueue(run.sessionFile, inboxMessage(message));
   return { state: "restarted", name: run.name, paneId: run.pane.paneId };

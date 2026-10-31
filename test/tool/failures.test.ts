@@ -123,3 +123,21 @@ it("delivers one done result", async () => {
   expect(sent).toHaveLength(1);
   expect(calls.filter((call) => call === "closeTabIfOnlyPane")).toHaveLength(0);
 });
+
+it("keeps polling while the agent is not registered yet", async () => {
+  let registered = false;
+  const { sent, tool } = loadTimedSession(async () => (registered ? { status: "idle", completionSeq: 1 } : null));
+
+  const started = parseStarted(await runTask(tool, "boot slowly"));
+
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(sent).toHaveLength(0);
+
+  registered = true;
+  writeFileSync(started.sessionFile, `${assistantLine("ready now")}\n`);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.message.content.startsWith("[subagent worker-1] done")).toBe(true);
+  expect(sent[0]?.message.content).toContain("ready now");
+});

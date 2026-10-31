@@ -1,10 +1,6 @@
-import { relative } from "node:path";
+import { samePath } from "./paths.ts";
 import { AUTO_EXIT_ENV, parentCwd } from "./spawn-args.ts";
 import type { RunPane, RunRecord, RunState } from "./state.ts";
-
-function samePath(left: string, right: string): boolean {
-  return relative(left, right) === "";
-}
 
 export async function createPane(state: RunState, run: RunRecord, cwd: string, label: string): Promise<RunPane> {
   const env = { [AUTO_EXIT_ENV]: run.autoExit ? "1" : "0" };

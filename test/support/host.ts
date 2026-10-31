@@ -23,7 +23,7 @@ export function fakeHost(
 
   let paneExists = true;
   let starts = 0;
-  const paneAgents = new Map<string, string>();
+  const paneAgents = new Map<string, { name: string; sessionFile: string }>();
   let agentImpl: (name: string) => Promise<AgentSnapshot | null> = async () => null;
   let listAgentsImpl: (() => Promise<AgentEntry[]>) | undefined;
   const host: HerdrHost = {
@@ -53,7 +53,7 @@ export function fakeHost(
     async startAgent(input) {
       calls.push("startAgent");
       agents.push(input);
-      paneAgents.set(input.paneId, input.name);
+      paneAgents.set(input.paneId, { name: input.name, sessionFile: input.sessionFile });
       inboxAtStart.push(pendingInbox(input.sessionFile));
       drainInbox(input.sessionFile);
       starts += 1;
@@ -72,10 +72,16 @@ export function fakeHost(
         return listAgentsImpl();
       }
       const entries: AgentEntry[] = [];
-      for (const [paneId, name] of paneAgents) {
-        const snapshot = await agentImpl(name);
+      for (const [paneId, agent] of paneAgents) {
+        const snapshot = await agentImpl(agent.name);
         if (snapshot) {
-          entries.push({ name, paneId, status: snapshot.status, completionSeq: snapshot.completionSeq });
+          entries.push({
+            name: agent.name,
+            paneId,
+            sessionFile: agent.sessionFile,
+            status: snapshot.status,
+            completionSeq: snapshot.completionSeq,
+          });
         }
       }
       return entries;

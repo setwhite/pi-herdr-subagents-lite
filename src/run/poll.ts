@@ -5,8 +5,10 @@ import type { RunRecord, RunState } from "./state.ts";
 
 const ACTIVITY_WINDOW_MS = 30_000;
 const BUSY_STATUSES = new Set(["working", "blocked", "unknown"]);
+// 被杀死的子代理既不写回执，pane 也不会消失：这是唯一需要时限的死亡判定。
+const LOST_CHILD_MS = 10_000;
 
-// 不排 0 延迟：启动瞬间 agent 可能还没进 agent list，会被误判成 pane 已退出。
+// 不排 0 延迟：首拍太早只会多一次 list。
 export function wake(state: RunState): void {
   state.activeUntil = state.now() + ACTIVITY_WINDOW_MS;
   reschedule(state, state.pollIntervalMs);
@@ -28,39 +30,36 @@ function reschedule(state: RunState, delayMs: number): void {
   state.pollTimer.unref?.();
 }
 
-function plan(state: RunState, agents: AgentEntry[]): number | undefined {
+// 只读 state：投递链抛错时也要能排出下一拍。
+function plan(state: RunState): number | undefined {
   const live = state.runs.filter((run) => run.live);
   if (live.length === 0) {
     return undefined;
   }
   const now = state.now();
-  let soonest: number | undefined;
+  let retry: number | undefined;
   for (const run of live) {
     if (run.read === undefined) {
       continue;
     }
     const delay = Math.max(0, run.read.at - now);
-    soonest = soonest === undefined ? delay : Math.min(soonest, delay);
+    retry = retry === undefined ? delay : Math.min(retry, delay);
   }
-  if (soonest !== undefined) {
-    return soonest;
+  if (retry !== undefined) {
+    return retry;
   }
-  const busy =
-    now < state.activeUntil || live.some((run) => BUSY_STATUSES.has(findAgent(agents, run)?.status ?? "unknown"));
+  const busy = now < state.activeUntil || live.some((run) => run.absentSince !== undefined || run.busy);
   return busy ? state.pollIntervalMs : state.idlePollIntervalMs;
 }
 
 async function tick(state: RunState): Promise<void> {
   state.pollTimer = undefined;
   state.pollBusy = true;
-  let agents: AgentEntry[] = [];
   try {
-    agents = await pollRuns(state);
-  } catch {
-    // 单个 run 的投递失败不会中断其余 run；下一拍继续。
+    await pollRuns(state);
   } finally {
     state.pollBusy = false;
-    const delay = plan(state, agents);
+    const delay = plan(state);
     if (delay !== undefined) {
       reschedule(state, delay);
     }
@@ -70,9 +69,11 @@ async function tick(state: RunState): Promise<void> {
 async function pollRun(state: RunState, agents: AgentEntry[], run: RunRecord): Promise<void> {
   const agent = findAgent(agents, run);
   if (!agent) {
-    await exited(state, run);
+    await missing(state, run);
     return;
   }
+  run.busy = BUSY_STATUSES.has(agent.status);
+  run.absentSince = undefined;
   run.pollFailures = 0;
   if (run.read !== undefined) {
     if (state.now() < run.read.at) {
@@ -86,7 +87,24 @@ async function pollRun(state: RunState, agents: AgentEntry[], run: RunRecord): P
   }
 }
 
-async function pollRuns(state: RunState): Promise<AgentEntry[]> {
+// 死亡只认事实：回执，或 pane 消失。
+async function missing(state: RunState, run: RunRecord): Promise<void> {
+  const receipt = state.readExitReceipt(run.sessionFile);
+  if (receipt !== null) {
+    await exited(state, run, receipt);
+    return;
+  }
+  if (run.pane === undefined || !(await state.host.hasPane(run.pane.paneId))) {
+    await exited(state, run, null);
+    return;
+  }
+  run.absentSince ??= state.now();
+  if (state.now() - run.absentSince >= LOST_CHILD_MS) {
+    await exited(state, run, null);
+  }
+}
+
+async function pollRuns(state: RunState): Promise<void> {
   let agents: AgentEntry[];
   try {
     agents = await state.host.listAgents();
@@ -94,7 +112,7 @@ async function pollRuns(state: RunState): Promise<AgentEntry[]> {
     for (const run of [...state.runs]) {
       await recordFailure(state, run);
     }
-    return [];
+    return;
   }
   for (const run of [...state.runs]) {
     if (!run.live) {
@@ -106,5 +124,4 @@ async function pollRuns(state: RunState): Promise<AgentEntry[]> {
       await recordFailure(state, run);
     }
   }
-  return agents;
 }

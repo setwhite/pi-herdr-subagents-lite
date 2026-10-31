@@ -10,6 +10,7 @@ export interface AgentSnapshot {
 export interface AgentEntry extends AgentSnapshot {
   name: string | null;
   paneId: string;
+  sessionFile: string | null;
 }
 
 export interface StartAgentInput {
@@ -25,6 +26,7 @@ interface AgentInfo {
   state_change_seq?: number;
   name?: string | null;
   pane_id: string;
+  agent_session?: { kind?: string; value?: string } | null;
 }
 
 function agentStartCommand(input: StartAgentInput): string[] {
@@ -45,6 +47,11 @@ function agentStartCommand(input: StartAgentInput): string[] {
   ];
 }
 
+function sessionPath(agent: AgentInfo): string | null {
+  const session = agent.agent_session;
+  return session?.kind === "path" && typeof session.value === "string" ? session.value : null;
+}
+
 export function createAgentCommands(exec: ExecHerdr) {
   return {
     async startAgent(input: StartAgentInput) {
@@ -56,6 +63,7 @@ export function createAgentCommands(exec: ExecHerdr) {
       return result.agents.map((agent) => ({
         name: agent.name ?? null,
         paneId: agent.pane_id,
+        sessionFile: sessionPath(agent),
         status: agent.agent_status,
         completionSeq: agent.completion_seq ?? agent.state_change_seq ?? 0,
       }));

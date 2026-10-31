@@ -1,3 +1,4 @@
+import type { ExitReceipt } from "../session-file/index.ts";
 import { closeTab, shouldClose } from "./close.ts";
 import type { RunResult } from "./result.ts";
 import { doneResult, unknownResult } from "./result.ts";
@@ -29,6 +30,9 @@ export async function readResult(state: RunState, run: RunRecord, seq: number, a
   }
   if (snapshot.text !== null) {
     run.lastHandledSeq = seq;
+    if (snapshot.text === run.lastDeliveredText) {
+      return;
+    }
     run.lastDeliveredText = snapshot.text;
     await finish(state, run, await doneResult(run, snapshot.text, state.maxResultChars));
     return;
@@ -36,14 +40,16 @@ export async function readResult(state: RunState, run: RunRecord, seq: number, a
 
   if (attempt >= READ_ATTEMPTS) {
     run.lastHandledSeq = seq;
-    await finish(state, run, unknownResult(run, "no_result"));
+    if (run.lastDeliveredText === null) {
+      await finish(state, run, unknownResult(run, "no_result"));
+    }
     return;
   }
 
   run.read = { seq, attempt, at: state.now() + READ_RETRY_DELAY_MS };
 }
 
-export async function exited(state: RunState, run: RunRecord): Promise<void> {
+export async function exited(state: RunState, run: RunRecord, receipt: ExitReceipt | null): Promise<void> {
   if (!run.live) {
     return;
   }
@@ -55,7 +61,7 @@ export async function exited(state: RunState, run: RunRecord): Promise<void> {
       await finish(state, run, await doneResult(run, text, state.maxResultChars));
     }
   } else if (run.lastDeliveredText === null) {
-    const reason = state.readExitReceipt(run.sessionFile) ? "quitted" : "pane_exited";
+    const reason = receipt === null ? "pane_exited" : "quitted";
     await finish(state, run, unknownResult(run, reason));
   }
   state.settle(run);

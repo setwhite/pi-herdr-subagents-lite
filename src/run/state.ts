@@ -44,6 +44,8 @@ export interface RunRecord {
   artifactSeq: number;
   read?: RunRead;
   pollFailures: number;
+  busy: boolean;
+  absentSince?: number;
   live: boolean;
 }
 

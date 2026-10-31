@@ -28,33 +28,13 @@ it("creates a workspace and returns its first tab", async () => {
   ]);
 });
 
-it("creates a tab in the given workspace", async () => {
+it("creates a tab in the current workspace", async () => {
   const { calls, commands } = fakeCommands();
 
   await expect(
-    commands.createTab({ cwd: "/repo", label: "explore-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" }, workspaceId: "w1" }),
+    commands.createTab({ cwd: "/repo", label: "explore-1", env: { PI_SUBAGENT_AUTO_EXIT: "0" } }),
   ).resolves.toEqual({ tabId: "w1:t2", paneId: "w1:p2" });
   expect(calls).toEqual([
-    [
-      "tab",
-      "create",
-      "--cwd",
-      "/repo",
-      "--label",
-      "explore-1",
-      "--env",
-      "PI_SUBAGENT_AUTO_EXIT=0",
-      "--workspace",
-      "w1",
-      "--no-focus",
-    ],
+    ["tab", "create", "--cwd", "/repo", "--label", "explore-1", "--env", "PI_SUBAGENT_AUTO_EXIT=0", "--no-focus"],
   ]);
-});
-
-it("creates a tab without a workspace when none is given", async () => {
-  const { calls, commands } = fakeCommands();
-
-  await commands.createTab({ cwd: "/repo", label: "explore-1", env: {} });
-
-  expect(calls[0]).not.toContain("--workspace");
 });

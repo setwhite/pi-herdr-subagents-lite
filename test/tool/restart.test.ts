@@ -90,7 +90,13 @@ it("sends to a renamed agent by pane id", async () => {
   const { sent, tool } = loadSession(fake.host);
   const started = parseStarted(await runTask(tool, "inspect the repo"));
   fake.setListAgents(async () => [
-    { name: "renamed-worker", paneId: started.paneId, status: "idle", completionSeq: 1 },
+    {
+      name: "renamed-worker",
+      paneId: started.paneId,
+      sessionFile: `${started.sessionFile}.other`,
+      status: "idle",
+      completionSeq: 1,
+    },
   ]);
 
   const reply = await sendTask(tool, "worker-1", "next turn");

@@ -96,6 +96,23 @@ it("delivers a done result from the exit receipt", async () => {
   expect(sent[0]?.message.content).toContain("final answer");
 });
 
+it("reports a killed child once the absence outlasts the lease", async () => {
+  let snapshot: AgentSnapshot | null = { status: "working", completionSeq: 0 };
+  const { sent, tool } = loadTimedSession(async () => snapshot);
+
+  await runTask(tool, "vanish later");
+
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(sent).toHaveLength(0);
+
+  snapshot = null;
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(sent).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(sent[0]?.message.content).toContain("the pane exited without a result");
+});
+
 it("reports a quitted run when the receipt has no final answer", async () => {
   const { sent, tool } = loadTimedSession(async () => null);
 
@@ -109,7 +126,8 @@ it("reports a quitted run when the receipt has no final answer", async () => {
 });
 
 it("reports pane exited without a receipt", async () => {
-  const { calls, sent, tool } = loadTimedSession(async () => null);
+  const { calls, fake, sent, tool } = loadTimedSession(async () => null);
+  fake.setPaneExists(false);
 
   const started = parseStarted(await runTask(tool, "vanished task"));
 

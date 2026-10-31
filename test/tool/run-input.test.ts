@@ -81,7 +81,7 @@ it("uses the current workspace for the parent cwd", async () => {
   await startRun(fake);
 
   expect(fake.calls).not.toContain("createWorkspace");
-  expect(fake.tabs[0]?.workspaceId).toBeUndefined();
+  expect(fake.tabs).toHaveLength(1);
 });
 
 it("passes model and thinking", async () => {

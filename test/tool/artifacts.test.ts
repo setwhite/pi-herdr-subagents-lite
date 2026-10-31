@@ -41,7 +41,8 @@ it("writes an artifact for long results", async () => {
 });
 
 it("writes an artifact for a long exited result", async () => {
-  const { sent, tool } = loadTimedSession(async () => null);
+  const { fake, sent, tool } = loadTimedSession(async () => null);
+  fake.setPaneExists(false);
 
   const started = parseStarted(await runTask(tool, "write a long report"));
   const { full } = longResult();
@@ -93,6 +94,7 @@ it("keeps artifacts when the completion seq resets", async () => {
   expect(revived.isError).toBe(false);
 
   fake.setAgents(async () => null);
+  fake.setPaneExists(false);
   const second = `${"b".repeat(16384)}SECOND_TAIL`;
   writeFileSync(started.sessionFile, `${assistantLine(second)}\n`);
   await vi.advanceTimersByTimeAsync(1000);
