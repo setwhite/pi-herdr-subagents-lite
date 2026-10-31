@@ -1,7 +1,24 @@
 # profile
 
-`loadProfiles` 读全局与受信项目的 `profiles/*.md`；profile 名取 frontmatter `name`（必填，非空），文件名不参与寻址。同一层同名全部不加载；跨层同名项目覆盖全局（DEC-0042、DEC-0058）。坏字段只跳过该 profile，返回 `{ profiles, problems }`，解析错误与单文件读取失败记为 problems；目录读取错误除 ENOENT 外照常抛出。
+profile 的读取、校验、分层与示例落盘。字段表见契约 §2；本文只写取舍。
 
-`resolveSkillPaths` 把 `skills` 列表里的名字解析成 SKILL.md 路径：先用 `DefaultPackageManager.resolve()` 拿 pi 的发现路径，再用 `loadSkills()` 建 `name → filePath`。查不到抛错，由 `src/run/resolve.ts` 转成 `profile_invalid`。不缓存（DEC-0059）。
+## 分层
 
-`seedExampleProfile` 在文件缺失时写一份示例到 `profiles/examples/domain.md`，已存在就不动；示例的 `name` 与文件名都是 `domain`。加载只看 `profiles/*.md`，示例不会自动生效（DEC-0057）。
+- 全局一层，项目一层；项目层只在项目受信后读。同名项目覆盖全局，同一层同名全部不加载（DEC-0042、DEC-0058）。
+- 同一层同名没有一个可辩护的优先级，所以两个都拒绝，并在错误里列出文件：不猜谁该赢。
+- 坏字段只跳过该 profile，不影响其它 profile；目录读不了（ENOENT 除外）上抛，因为那时列表不完整，静默降级会误导。
+
+## 名字
+
+- profile 名只取 frontmatter `name`，必填。文件名只用于诊断与示例复制（DEC-0058）。
+- 加载只看 `profiles/*.md`；`examples/` 不参与加载（DEC-0057）。
+
+## skills
+
+- `skills` 列表交给 pi 的发现器解析，不复制发现规则；名字查不到报 `profile_invalid`（DEC-0059）。
+- 不缓存：`run` 与 `send` 各扫一次目录，毫秒级；缓存会让改 skill 后要重启 pi 才生效。
+
+## 示例
+
+- 扩展加载时写 `profiles/examples/domain.md`，只在缺失时写，不覆盖。
+- 写失败只告警，不阻止扩展加载：示例是可选文件。

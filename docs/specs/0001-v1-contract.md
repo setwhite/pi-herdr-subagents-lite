@@ -12,7 +12,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 - 严格 JSON：未知键、类型错误、枚举错误 = 配置无效；扩展加载失败，pi 报错退出并提示 `pi -ne`，错误里指出字段。数值越界静默 clamp。
 - 只读一次；改完重启 pi 生效。文件不存在 = 全部默认。
 
-默认值与 clamp 边界以 `src/config/index.ts` 与 `test/config.test.ts` 为准；本表只写语义。
+默认值与 clamp 边界以 `src/config/index.ts` 与 `test/config/config.test.ts` 为准；本表只写语义。
 
 | 键 | 类型 | 允许 | 说明 |
 |---|---|---|---|
@@ -24,7 +24,8 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `aggregateWindowMs` | integer | 越界 clamp | 0 = 不聚合，逐个回投 |
 | `closeChildrenOn` | string[] | `new` / `resume` / `fork` / `quit` / `reload` | 空 = 不关；命中 `session_shutdown.reason` 时关该父会话的子 tab |
 | `inboxPollMs` | integer | 越界 clamp | 子侧 inbox 轮询间隔 |
-| `pollIntervalMs` | integer | 越界 clamp | 父侧 `agent list` 轮询间隔 |
+| `pollIntervalMs` | integer | 越界 clamp | 父侧 `agent list` 轮询间隔（活跃档：有 run 在 working / blocked / unknown，或刚 `run` / `send`） |
+| `idlePollIntervalMs` | integer | 越界 clamp | 慢速档间隔：所有 live run 都只是收工等 `send` 时用它；pane 死亡的最晚发现时间等于它 |
 | `prompts` | object | — | 提示词覆盖；键与展开见 `src/tool/text.ts` |
 | `bridge` | object | — | 见第 7 节 |
 
@@ -37,7 +38,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | 子 session | `<agent-dir>/pi-herdr-subagents-lite/sessions/<name>-<runId>.jsonl`；`runId` 每个 run 唯一 |
 | 任务简报 | `<childSession>.brief.md` |
 | 身份文件 | `<childSession>.identity.md`；存 profile body |
-| 子侧 inbox | `<childSession>.inbox/`；处理完归档到 `.delivered/` |
+| 子侧 inbox | `<childSession>.inbox/`；投递成功后删除消息文件；失败保留（at-least-once）；第一条是 `@<childSession>.brief.md`，目录在 `agent start` 前建好、消息在它返回后入队 |
 | 结果 artifact | `<childSession>.result-<seq>.md` |
 | 退出回执 | `<childSession>.exit`；只在 `<childSession>.inbox/` 存在时写 |
 
@@ -53,14 +54,14 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `description` | string | 空 | 出现在工具 guidelines 的 profile 列表 |
 | `model` | string | 继承父 | provider/model 或 pi 支持的 pattern |
 | `thinking` | string | 继承父 | off / minimal / low / medium / high / xhigh / max |
-| `tools` | string | `-<toolName>` | 省略 = pi 默认集去掉本工具（防嵌套）；纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删；两者不能混用；空字符串 = 空 allowlist |
+| `tools` | string | 省略 | 省略 = pi 默认集，加 `--exclude-tools <toolName>`（防嵌套；`--tools -<toolName>` 不过滤扩展工具）；纯名字 = 严格 allowlist；`+name` / `-name` = 在默认集增删，除显式写 `+<toolName>` 外仍排除本工具；两者不能混用；空字符串 = 空 allowlist |
 | `skills` | string / list | 省略 | 省略 = pi 默认发现；`""` 或 `[]` = 不加载 skill；非空列表 = 只加载列出的项，名字按 pi 默认发现集解析（agent-dir、项目 `.pi/skills`、`.agents/skills`、包内、settings 配置）；列表项是名字，不带 `+` / `-`；查不到报 `profile_invalid` |
 | `system-prompt` | string | append | append / replace / task；省略 = append，见 [DEC-0051](../decisions/0051-system-prompt.md) |
 | `auto-exit` | boolean | false | true = 任务收工后子进程自己 shutdown，父侧关 tab；有未答对话框或未取 inbox 消息时不退 |
 | `disable-model-invocation` | boolean | false | true = 从 guidelines 隐藏，显式 run 仍可用 |
 
 - `ask_user_question` 不自动加入；想反问就写进 `tools`。
-- 子代理默认没有本工具，嵌套要显式打开：在 `tools` 里写上工具名（通常是 `subagent`）。不管理嵌套深度。
+- 子代理默认没有本工具，嵌套要显式打开：纯名字列表里写上工具名，或在 `+name` 列表里写 `+<toolName>`。不管理嵌套深度。
 - 未知字段忽略；解析失败只跳过该 profile，并在工具错误里说明。
 - `name` 缺失、不是字符串或为空白：该 profile 不加载；`run` 返回 `profile_invalid`，按文件名定位。
 - 同一层两个文件同名：两个都不加载，`profile_invalid` 列出两个文件；项目层与全局层同名仍是项目覆盖。
@@ -102,12 +103,13 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | `not_in_herdr` | 父会话不在 herdr pane | 必须在 herdr 里运行；无降级 |
 | `unknown_profile` | run 的 profile 不存在 | 当前 profile 列表（name + description） |
 | `unknown_agent` | send 的 name 不在 run 记录里 | 当前可用名称 |
-| `max_concurrent` | live 子代理已达 maxConcurrent | 当前 live 名称；等结果或关一个 |
+| `max_concurrent` | live 子代理已达 maxConcurrent：run 新建，或 send 到已收工、已退出的 run；此时不投递、不重启 | 当前 live 名称；等结果或关一个 |
 | `profile_invalid` | profile 字段解析失败，或 `skills` 里的名字找不到 | 文件 + 字段 + 原因，或 skill 名 + cwd |
 | `spawn_failed` | tab / pane / agent start 失败；含未就绪与 trust 对话框拦住 | 底层错误；已创建的 pane id 保留；未就绪时附「去 pane 处理对话框」 |
 | `name_exhausted` | 自动命名重试用尽仍冲突 | 尝试 100 次仍无空闲名 |
 | `tail_dirty` | 需要重启，但 session 尾部有未完成 toolCall | 不重启；先检查，避免重放副作用 |
 | `session_missing` | send 的 run 记录存在，但子 session 文件不存在 | 用 run 新建 |
+| `session_unreadable` | send 的 run 记录存在，子 session 文件存在但读不了 | 不重启；用 run 新建 |
 
 结果 artifact 写失败不是工具错误：不返回 `isError`，结果消息保留截断头部并附警告。
 
@@ -129,6 +131,7 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 - 侧边栏显示 herdr 的 agent name；**不设 `display_agent`**。
 - pane 标签 = 任务第一行；去掉 markdown 前缀、折叠空白、去控制字符、截 32 字；为空时用 `name`。
 - 不设 `title` / `state_labels`；新 workspace 的 label 创建时设为 `name`，之后不改。
+- cwd 与父 cwd 不同时，用 `workspace create` 返回的初始 tab 作为子代理 tab：把该 tab 的 label 改成 `name`；不追加第二个 tab。
 - `send` 用同一个 `name`。
 - 人改 tab 标签不影响寻址；寻址用 agent name。agent 被 `herdr agent rename` 改名后，按 run 记录的 `paneId` 在 `agent list` 里回落匹配。
 
@@ -139,15 +142,16 @@ v1 对外配置、工具、结果与 bridge；代码按本文实现。决策理�
 | 子代理状态 | send 做什么 | 返回 |
 |---|---|---|
 | agent 存在（working / idle / blocked / done / unknown） | 写 `<childSession>.inbox/`；子进程按自己是否 idle 选择新 turn 或 steer；有未答对话框时排队，人回答后处理 | `{state:"sent", name}` |
-| 已退出，pane 还在，尾部干净 | 同 pane、同名 `agent start --session <childSession>`，再写 inbox；profile 重新读取 | `{state:"restarted", name, paneId}` |
+| 已退出，pane 还在，尾部干净，`auto-exit` 未变 | 同 pane、同名 `agent start --session <childSession>`，再写 inbox；profile 重新读取 | `{state:"restarted", name, paneId}` |
 | 已退出，pane 已关（auto-exit） | 新建 tab，同名 `agent start --session <childSession>`，再写 inbox | `{state:"restarted", name, paneId}` |
+| 已退出（尾部干净）或已收工但仍活着，live 已达 `maxConcurrent` | 不投递、不重启 | `max_concurrent` |
 | 已退出，尾部有未完成 toolCall | 不重启 | `tail_dirty` |
 | 子 session 文件不存在 | 不重启 | `session_missing` |
 | name 不在 run 记录 | 不投递 | `unknown_agent` |
 
 「尾部干净」只看有没有未完成的 toolCall；以 assistant 文本、toolResult、user 或 custom 消息结尾都算干净。
 
-重启用 run 记录的 `cwd`；profile 重新读取（DEC-0031），非 `task` 模式按新 profile 重写身份文件。cwd 与父 cwd 不同时在新 workspace 开 tab，相同则在同 workspace 开新 tab。
+重启用 run 记录的 `cwd`；profile 重新读取（DEC-0031），非 `task` 模式按新 profile 重写身份文件。新 profile 的 `auto-exit` 与建 tab 时的值不一致时，关掉旧 tab（只在它只剩该 pane 时）并新建 tab；一致则复用原 pane。cwd 与父 cwd 不同时用新 workspace 的初始 tab，相同则在同 workspace 开新 tab。
 
 ## 6. 结果消息
 

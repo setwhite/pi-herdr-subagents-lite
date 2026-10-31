@@ -96,6 +96,8 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 
 One global file: `<agent-dir>/pi-herdr-subagents-lite/config.json`. `<agent-dir>` defaults to `~/.pi/agent` and follows `PI_CODING_AGENT_DIR`. Project config is not read.
 
+Defaults and clamp boundaries are defined by `src/config/index.ts` and `test/config/config.test.ts` ([contract §1](docs/specs/0001-v1-contract.md#1-配置)). This section lists keys and meaning only.
+
 ### Minimal config
 
 A missing file means all defaults. To change one value, write only that value:
@@ -106,58 +108,24 @@ A missing file means all defaults. To change one value, write only that value:
 }
 ```
 
-### Full config
+### Keys
 
-Every key with its default. Strict JSON: an unknown key, a wrong type or a bad enum makes the extension fail to load and pi exits naming the field. The `//` lines are comments; delete them before use.
+| Key | Meaning |
+|---|---|
+| `enabled` | Gates tool registration only; the bridge has its own switch |
+| `toolName` | Name the model sees; `^[a-z][a-z0-9_]{0,31}$` |
+| `herdrBin` | herdr executable; a plain name resolves from PATH, an absolute path pins a version |
+| `maxConcurrent` | Live children per parent session; an `auto-exit: false` child keeps its slot after settling |
+| `maxResultChars` | Per-result character limit; beyond it the full text goes to an artifact and the message keeps a truncated head plus the path |
+| `aggregateWindowMs` | Merge window in milliseconds; 0 = deliver each result at once |
+| `closeChildrenOn` | Parent shutdown reasons that close its child tabs: `new` / `resume` / `fork` / `quit` / `reload`; empty = never |
+| `inboxPollMs` | Child inbox polling interval |
+| `pollIntervalMs` | Parent `agent list` interval while a child works, or right after `run` / `send` |
+| `idlePollIntervalMs` | Parent interval when every live child only waits for `send`; it bounds how late a dead pane is noticed |
+| `prompts` | Tool text overrides: `description`, `snippet`, `guidelines`; omitted keys keep the built-in text; `snippet: ""` hides the tool from Available tools; keep `{{profiles}}` to list profiles |
+| `bridge` | `enabled` turns pi prompt events into `herdr:blocked`; `blockedOn` lists the prompt kinds that count as blocked |
 
-```jsonc
-{
-  // Gates tool registration only; the bridge has its own switch
-  "enabled": true,
-
-  // Name the model sees; ^[a-z][a-z0-9_]{0,31}$
-  "toolName": "subagent",
-
-  // Resolved from PATH; set an absolute path to pin a version
-  "herdrBin": "herdr",
-
-  // Live children per parent session; auto-exit false keeps its slot after settling
-  "maxConcurrent": 16,
-
-  // Per result (1024-1048576); beyond it the full text goes to an artifact and the message keeps a truncated head plus the path
-  "maxResultChars": 16384,
-
-  // Ms (0-10000); results inside the window merge into one message, 0 = deliver each immediately
-  "aggregateWindowMs": 500,
-
-  // Parent shutdown reasons that close its child tabs: new / resume / fork / quit / reload; empty = never
-  "closeChildrenOn": [],
-
-  // Child inbox polling interval in ms (50-5000)
-  "inboxPollMs": 250,
-
-  // Parent agent list polling in ms (100-60000); larger saves processes, smaller spots finished children sooner
-  "pollIntervalMs": 1000,
-
-  // Override tool text. Omitted keys keep the built-in text; the values are placeholders, drop the whole block if unused
-  "prompts": {
-    "description": "One line about what this tool does",
-    // Empty hides the tool from Available tools
-    "snippet": "",
-    // One guideline per line; the tool name prefix is added for you. Keep {{profiles}} to list profiles
-    "guidelines": ["Available profiles:\n{{profiles}}"]
-  },
-
-  // Turns pi prompt events into herdr:blocked, for native notifications
-  "bridge": {
-    "enabled": true,
-    // Which prompt kinds count as blocked
-    "blockedOn": ["custom", "select", "confirm", "input", "editor"]
-  }
-}
-```
-
-Out-of-range numbers are clamped to the boundary, not rejected. The config is read once, so restart pi after editing.
+Strict JSON: an unknown key, a wrong type or a bad enum makes the extension fail to load, and pi exits naming the field. Out-of-range numbers clamp to the boundary. The config is read once, so restart pi after editing.
 
 ## Reference projects
 

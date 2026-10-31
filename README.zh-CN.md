@@ -96,6 +96,8 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 
 只有一个全局文件：`<agent-dir>/pi-herdr-subagents-lite/config.json`。`<agent-dir>` 默认 `~/.pi/agent`，跟随 `PI_CODING_AGENT_DIR`。项目级配置不读。
 
+默认值与 clamp 边界由 `src/config/index.ts` 与 `test/config/config.test.ts` 定义（[契约 §1](docs/specs/0001-v1-contract.md#1-配置)）。本节只列键与语义。
+
 ### 最小配置
 
 文件不存在就全用默认值。只改一项，就只写这一项：
@@ -106,58 +108,24 @@ cd ~/.pi/agent/pi-herdr-subagents-lite/profiles && cp examples/domain.md domain.
 }
 ```
 
-### 完整配置
+### 键
 
-逐项列出，值是默认值。必须是严格 JSON：未知键、类型不对、枚举非法都会让扩展加载失败，pi 报出字段名退出。`//` 行是注释，用之前删掉。
+| 键 | 含义 |
+|---|---|
+| `enabled` | 只管工具注册；bridge 有自己的开关 |
+| `toolName` | 模型看到的工具名；`^[a-z][a-z0-9_]{0,31}$` |
+| `herdrBin` | herdr 可执行文件；相对名从 PATH 解析，绝对路径锁定版本 |
+| `maxConcurrent` | 每个父会话并存的子代理数；`auto-exit: false` 的子代理收工后仍占槽 |
+| `maxResultChars` | 单条结果字符上限；超了全文落 artifact，消息里留截断的头和路径 |
+| `aggregateWindowMs` | 合并窗口，毫秒；0 = 逐条立即投递 |
+| `closeChildrenOn` | 父会话以这些原因退出时关掉子 tab：`new` / `resume` / `fork` / `quit` / `reload`；空 = 从不关 |
+| `inboxPollMs` | 子侧 inbox 轮询间隔 |
+| `pollIntervalMs` | 父侧 `agent list` 间隔；有子代理在工作，或刚 `run` / `send` 时用 |
+| `idlePollIntervalMs` | 所有 live 子代理都只是在等 `send` 时的间隔；它决定 pane 死亡最晚多久被发现 |
+| `prompts` | 覆盖工具文案：`description`、`snippet`、`guidelines`；省略的键用内置文案；`snippet: ""` 让工具从 Available tools 消失；保留 `{{profiles}}` 才会列出 profile |
+| `bridge` | `enabled` 把 pi 对话框事件转成 `herdr:blocked`；`blockedOn` 列出算 blocked 的对话框类型 |
 
-```jsonc
-{
-  // 只管工具注册；bridge 有自己的开关
-  "enabled": true,
-
-  // 模型看到的工具名；^[a-z][a-z0-9_]{0,31}$
-  "toolName": "subagent",
-
-  // 从 PATH 解析；写绝对路径可锁定版本
-  "herdrBin": "herdr",
-
-  // 每个父会话并存的子代理数；auto-exit 为 false 的子代理收工后仍占槽
-  "maxConcurrent": 16,
-
-  // 单条结果上限（1024-1048576）；超了全文落 artifact，消息里留截断的头和路径
-  "maxResultChars": 16384,
-
-  // 合并窗口，毫秒（0-10000）；窗口内的结果并成一条，0 = 逐条立即投递
-  "aggregateWindowMs": 500,
-
-  // 父会话以这些原因退出时关掉子 tab：new / resume / fork / quit / reload；空 = 从不关
-  "closeChildrenOn": [],
-
-  // 子侧 inbox 轮询间隔，毫秒（50-5000）
-  "inboxPollMs": 250,
-
-  // 父侧 agent list 轮询间隔，毫秒（100-60000）；调大省进程，调小更早发现收工
-  "pollIntervalMs": 1000,
-
-  // 覆盖工具文案。省略的键用内置文案；下面的值是占位符，不用就整段删掉
-  "prompts": {
-    "description": "一句话说明这个工具做什么",
-    // 留空 = 不出现在 Available tools 列表
-    "snippet": "",
-    // 一行一条，工具名前缀自动加；保留 {{profiles}} 才会列出 profile
-    "guidelines": ["可用 profile：\n{{profiles}}"]
-  },
-
-  // 把 pi 的对话框事件转成 herdr:blocked，供原生通知使用
-  "bridge": {
-    "enabled": true,
-    // 哪些对话框算 blocked
-    "blockedOn": ["custom", "select", "confirm", "input", "editor"]
-  }
-}
-```
-
-超范围的数字会被夹到边界，不报错。配置只读一次，改完重启 pi。
+必须是严格 JSON：未知键、类型不对、枚举非法都会让扩展加载失败，pi 报出字段名退出。超范围的数字会被夹到边界，不报错。配置只读一次，改完重启 pi。
 
 ## 参考项目
 

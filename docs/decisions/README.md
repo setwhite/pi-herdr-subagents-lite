@@ -27,7 +27,7 @@
 | # | 决策 |
 |---|---|
 | [0022](0022-tab-placement.md) | 新 tab 或新 workspace |
-| [0023](0023-start-then-prompt.md) | 先等 idle，再投 brief |
+| [0023](0023-start-then-prompt.md) | brief 不进启动参数，启动前入队 |
 | [0047](0047-close-on-done-default-keep.md) | 完成默认保留 tab；关闭由 auto-exit 与 closeChildrenOn 决定 |
 | [0048](0048-close-children-on.md) | 父会话结束按 closeChildrenOn 清理 |
 | [0032](0032-death-detection.md) | died 判定以 agent list 消失为准 |
@@ -38,7 +38,7 @@
 
 | # | 决策 |
 |---|---|
-| [0009](0009-brief-file.md) | 任务简报写文件，用 `@brief` 投递 |
+| [0009](0009-brief-file.md) | 任务简报写文件，用 `@brief` 经 inbox 投递 |
 | [0010](0010-cwd-from-run.md) | 子代理 cwd 来自 run 参数 |
 | [0013](0013-fresh-only.md) | v1 只支持 fresh |
 | [0050](0050-skills.md) | skills 三态 |

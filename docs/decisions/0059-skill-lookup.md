@@ -9,7 +9,7 @@
 ## Considered Options
 
 - 列表项写路径：15 行，但用户要手写 `../.pi/skills/x`。
-- 子进程用 `/skill:<name>` 强制调用：只增加调用，不能收缩 skill 集；本仓任务走 `agent prompt`，`/skill:` 能否展开未验证。
+- 子进程用 `/skill:<name>` 强制调用：只增加调用，不能收缩 skill 集；本仓任务走 inbox（DEC-0026），`/skill:` 能否展开未验证。
 - 从父 system prompt 的 `<available_skills>` 扒路径：格式属内部约定，`disable-model-invocation` 的 skill 不在里面。
 
 ## Consequences
